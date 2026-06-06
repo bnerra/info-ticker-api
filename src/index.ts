@@ -199,9 +199,9 @@ setInterval(async () => {
   try {
     await gameService.refresh()
 
-    // sseManager.broadcast(
-    //   gameService.getGames()
-    // )
+    sseManager.broadcast(
+      gameService.getGames()
+    )
   } catch (err) {
     app.log.error(err)
   }

@@ -3,10 +3,14 @@ import { mlbEndpoints } from "./mlbEndpoints";
 // Base parameters for the St. Louis Cardinals in 2026
 const TEAM_ID = 138;
 const SPORT_ID = 1;
-const TODAY_STR = "2026-06-04"; 
-const YESTERDAY_STR = "2026-06-03";
+const TODAY_STR = new Date().toLocaleDateString('en-CA')
+// const YESTERDAY_STR = "2026-06-03";
 const SEASON_START = "2026-03-01";
-const SEASON_END = "2026-10-01";
+const SEASON_END = "2026-10-01"
+
+const someDate = new Date()
+someDate.setDate(someDate.getDate() -1)
+const YESTERDAY_STR = someDate.toLocaleDateString('en-CA')
 
 /**
  * Helper function to safely extract the first game object from the API response
@@ -36,7 +40,7 @@ function extractLastGame(data: any) {
  */
 export async function getLiveOrTodayGame() {
     // const url = `https://mlb.com{SPORT_ID}&teamId=${TEAM_ID}&date=${TODAY_STR}&hydrate=linescore`;
-    const url = `https://statsapi.mlb.com/api/v1/schedule?sportId=1&teamId=138&date=2026-06-05&hydrate=linescore`
+    const url = `https://statsapi.mlb.com/api/v1/schedule?sportId=1&teamId=${TEAM_ID}&date=${TODAY_STR}&hydrate=linescore`
     try {
         const response = await fetch(url);
         const data = await response.json();
@@ -70,7 +74,7 @@ export async function getLiveOrTodayGame() {
  * 2. Fetch Last Game Played (Looking back from yesterday)
  */
 export async function getLastGamePlayed() {
-    const url = `https://statsapi.mlb.com/api/v1/schedule?sportId=1&teamId=138&startDate=2026-03-25&endDate=2026-06-04`
+    const url = `https://statsapi.mlb.com/api/v1/schedule?sportId=1&teamId=${TEAM_ID}&startDate=2026-03-25&endDate=${YESTERDAY_STR}`
 
     // const url = `https://mlb.com{SPORT_ID}&teamId=${TEAM_ID}&startDate=${SEASON_START}&endDate=${YESTERDAY_STR}&limit=1&hydrate=decisions`;
     try {
@@ -103,7 +107,7 @@ export async function getLastGamePlayed() {
  */
 export async function getNextGameScheduled() {
     // const url = `https://mlb.com{SPORT_ID}&teamId=${TEAM_ID}&startDate=${TODAY_STR}&endDate=${SEASON_END}&limit=1&hydrate=team`;
-    const url = `https://statsapi.mlb.com/api/v1/schedule?sportId=1&teamId=138&startDate=2026-06-05&endDate=2027-01-01`
+    const url = `https://statsapi.mlb.com/api/v1/schedule?sportId=1&teamId=${TEAM_ID}&startDate=${TODAY_STR}&endDate=${SEASON_END}`
     try {
         const response = await fetch(url)
         const data = await response.json()
