@@ -1,6 +1,15 @@
 import { fetchGamePks } from '../constants/fetchGames'
+import { mlbTeams } from '../constants/mlbData'
 import { mlbEndpoints } from '../constants/mlbEndpoints'
 import { GameData } from '../types/GameData'
+
+const mockStandings: any = [
+    { abbreviation: 'CHC', wins: 99, losses: 26, gamesBack: 5 },
+    { abbreviation: 'MIL', wins: 99, losses: 21, gamesBack: '-' },
+    { abbreviation: 'CIN', wins: 99, losses: 30, gamesBack: 9.0 },
+    { abbreviation: 'STL', wins: 99, losses: 22, gamesBack: 1.5 },
+    { abbreviation: 'PIT', wins: 99, losses: 27, gamesBack: 6 }
+  ]
 
 enum ViewStatus {
   In_Progress = 'IN_PROGRESS',
@@ -13,7 +22,8 @@ export interface GamesCache {
   currentGame: any
   lastGame: any
   nextGame: any
-  secondary: any
+  divisionStandings: any
+  inningByInning: any
 }
 
 export class GameService {
@@ -22,9 +32,8 @@ export class GameService {
     currentGame: {},
     lastGame: {},
     nextGame: {},
-    secondary: {
-      divisionStandings: {}
-    }
+    divisionStandings: {},
+    inningByInning: {}
   }
 
   async divisionStandings(divisionId: number, leagueId: number) {
@@ -44,7 +53,7 @@ export class GameService {
 
     return {
       divisionName: 'NL Central',
-      standings: [...standings],
+      standings: standings || mockStandings,
     }
   }
 
@@ -64,6 +73,12 @@ export class GameService {
       lastPk,
       nextPk
     } = gamePks
+
+    console.log({
+      livePk,
+      lastPk,
+      nextPk
+    })
 
     this.cache.viewStatus = ViewStatus.Concluded
 
@@ -113,8 +128,8 @@ export class GameService {
 
       console.log({
         balls: data.liveData.linescore.balls,
-            strikes: data.liveData.linescore.strikes,
-            outs: data.liveData.linescore.outs,
+        strikes: data.liveData.linescore.strikes,
+        outs: data.liveData.linescore.outs,
       })
 
       this.cache.viewStatus = ViewStatus.In_Progress
@@ -182,9 +197,33 @@ export class GameService {
           }
         },
       }
-      // const game = data.games[0]
+      
+      const homeInnings: any = {
+        teamId: data.gameData.teams.home.id,
+        name: data.gameData.teams.home.abbreviation,
+        innings: data.liveData.linescore.innings.map((inning: any) => inning.home.runs),
+        runs: data.liveData.boxscore.teams.home.teamStats.batting.runs,
+        hits: data.liveData.boxscore.teams.home.teamStats.batting.hits,
+        errors: data.liveData.boxscore.teams.home.teamStats.fielding.errors,
+      }
 
-      // console.dir(data, { depth: null })
+      const awayInnings: any = {
+        teamId: data.gameData.teams.away.id,
+        name: data.gameData.teams.away.abbreviation,
+        innings: data.liveData.linescore.innings.map((inning: any) => inning.away.runs),
+        runs: data.liveData.boxscore.teams.away.teamStats.batting.runs,
+        hits: data.liveData.boxscore.teams.away.teamStats.batting.hits,
+        errors: data.liveData.boxscore.teams.away.teamStats.fielding.errors,
+      }
+
+      // this.cache.inningByInning = {
+      //   hello: 'goodbye'
+      // }
+
+      this.cache.inningByInning = {
+        homeInnings: homeInnings,
+        awayInnings: awayInnings,
+      }
       
     }
 
@@ -245,7 +284,19 @@ export class GameService {
       }
     }
 
-    this.cache.secondary.divisionStandings = await this.divisionStandings(205, 104)
+    this.cache.divisionStandings = await this.divisionStandings(205, 104)
+
+    // TODO: HELPER FUNCTION RELOCATE
+    const addAbbreviation = (values: any[]) => {
+      const abbMap = new Map(
+        mlbTeams.map((item: any) => [item.appId, item.abbreviation])
+      )
+
+      return values.map((team: any) => ({
+        ...team,
+        abbreviation: abbMap.get(team.teamId)
+      }))
+    }
 
 
 
