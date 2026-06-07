@@ -1,9 +1,6 @@
-import { getLastGamePlayed, getLiveOrTodayGame, getNextGameScheduled } from '../constants/fetchingGames'
+import { fetchGamePks } from '../constants/fetchGames'
 import { mlbEndpoints } from '../constants/mlbEndpoints'
 import { GameData } from '../types/GameData'
-import { ScheduleService } from './ScheduleService'
-
-const scheduleService = new ScheduleService()
 
 enum ViewStatus {
   In_Progress = 'IN_PROGRESS',
@@ -26,7 +23,28 @@ export class GameService {
     lastGame: {},
     nextGame: {},
     secondary: {
-      divisionStanding: {}
+      divisionStandings: {}
+    }
+  }
+
+  async divisionStandings(divisionId: number, leagueId: number) {
+    const url = mlbEndpoints.divisionStandings(divisionId, leagueId)
+    const response = await fetch(url)
+    const data = await response.json()
+
+    const NL_Central: any = data.records.find((record: any) => record.division.id === divisionId)
+
+    const standings = NL_Central.teamRecords.map((team: any) => ({
+      teamId: team.team.id,
+      divisionRank: team.divisionRank,
+      wins: team.wins,
+      losses: team.losses,
+      gamesBack: team.gamesBack,
+    }))
+
+    return {
+      divisionName: 'NL Central',
+      standings: [...standings],
     }
   }
 
@@ -39,15 +57,13 @@ export class GameService {
   }
 
   async refresh() {
-    const livePk = await getLiveOrTodayGame()
-    const lastPk = await getLastGamePlayed()
-    const nextPk = await getNextGameScheduled()
+    const gamePks = await fetchGamePks()
 
-    console.log({
+    const {
       livePk,
       lastPk,
       nextPk
-    })
+    } = gamePks
 
     this.cache.viewStatus = ViewStatus.Concluded
 
@@ -58,18 +74,21 @@ export class GameService {
       const isTopInning = data.liveData.linescore.isTopInning
 
       const getBatterData = async (batterId: number) => {
-        console.log({batterId})
+        // console.log({batterId})
         const team = isTopInning ? 'away' : 'home'
         const playerString = `ID${batterId}`
         const playerInfo = await this.playerInfo(batterId)
 
+        const players = data.liveData.boxscore.teams[team].players
+
         return {
-          name: 'Slugger',
-          number: 52,
-          average: '.347',
-          // name: playerInfo.boxscoreName,
-          // number: data.liveData.boxscore.teams[team].players[`ID${batterId}`].jerseyNumber,
-          // average: data.liveData.boxscore.teams[team].players[`ID${batterId}`].seasonStats.batting.avg,
+          // name: 'Slugger',
+          // number: 52,
+          // average: '.347',
+          name: playerInfo.boxscoreName,
+          // number: data.liveData.boxscore.teams[team].players[`ID${batterId}`].jerseyNumber || '',
+          number: players[playerString].jerseyNumber || 99,
+          average: data.liveData.boxscore.teams[team].players[`ID${batterId}`].seasonStats.batting.avg || '.000',
         }
       }
 
@@ -78,17 +97,17 @@ export class GameService {
         const team = !isTopInning ? 'away' : 'home'
         const playerString = `ID${pitcherId}`
         const playerInfo = await this.playerInfo(pitcherId)
-        console.log({pitcherId, team})
+        // console.log({pitcherId, team})
 
         // const test = data.liveData.boxscore.teams[team].players.ID664208
 
         // console.log({test})
 
         return {
-          // name: playerInfo.boxscoreName,
-          // pitchCount: data.liveData.boxscore.teams[team].players[`ID${pitcherId}`].stats.pitching.pitchesThrown,
-          name: 'Aguerro',
-          pitchCount: 37,
+          name: playerInfo.boxscoreName,
+          pitchCount: data.liveData.boxscore.teams[team].players[`ID${pitcherId}`].stats.pitching.pitchesThrown || 999,
+          // name: 'Aguerro',
+          // pitchCount: 37,
         }
       }
 
@@ -100,6 +119,7 @@ export class GameService {
 
       this.cache.viewStatus = ViewStatus.In_Progress
       this.cache.currentGame = {
+        status: data.gameData.status,
         gamePk: data.gamePk,
         metaData: {
           date: data.gameData.datetime.officialDate.replaceAll('-', '/'),
@@ -224,6 +244,11 @@ export class GameService {
         },
       }
     }
+
+    this.cache.secondary.divisionStandings = await this.divisionStandings(205, 104)
+
+
+
 
   }
 

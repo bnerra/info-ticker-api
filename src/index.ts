@@ -13,32 +13,36 @@ const sseManager = new SseManager()
 
 app.register(sseRoutes)
 
-interface Item {
-  id: string;
-  name: string;
-}
-
-let items: Item[] = [
-  { id: '1', name: 'Item One' }
-]
-
 // GET all items
-// app.get('/team', async (request, reply: FastifyReply) => {
-//   try {
-    
-//     const teamData = {
-//       team,
-//       teamRoster,
-//       leagueStandings,
-//       teamStats,
-//     }
+app.get('/weather', async (request, reply: FastifyReply) => {
+  try {
+    // const url = 'https://api.open-meteo.com/v1/forecast?latitude=38.78&longitude=-90.59&current=temperature_2m,wind_speed_10m,cloud_cover&hourly=precipitation_probability&temperature_unit=fahrenheit&wind_speed_unit=mph'
+    // const responses = await fetch(url);
 
-//     return reply.status(201).send(teamData)
+    // const response = await responses.json()
 
-//   } catch (error) {
-//     console.error('ERROR FETCHING TEAM STATS: ', error)
-//   }
-// });
+    // return reply.status(201).send(response)
+
+    const url = `https://statsapi.mlb.com/api/v1/schedule?sportId=1&teamId=138&startDate=2026-03-25&endDate=2027-01-01`
+  const response = await fetch(url)
+  const data = await response.json()
+  const schedule: any = data.dates
+  const allGames: any = schedule.flatMap((date: any) => date.games)
+  const now = new Date()
+
+  const games = allGames.sort(
+    (a: any, b: any) =>
+      new Date(a.gameDate).valueOf() - new Date(b.gameDate).valueOf()
+  )
+
+  return reply.status(201).send(games)
+
+  // console.log({games})
+
+  } catch (error) {
+    console.error('ERROR FETCHING WEATHER DATA: ', error)
+  }
+});
 
 app.get('/api/live-games', async (request, reply) => {
   reply.raw.setHeader(

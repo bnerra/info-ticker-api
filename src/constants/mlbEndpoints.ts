@@ -26,10 +26,11 @@ export const mlbEndpoints = {
 
     return url.toString()
   },
-  divisionStandings: (divisionId: number) => {
+  divisionStandings: (divisionId: number, leagueId: number) => {
     const url = new URL(`${MLB_API_BASE}/standings`)
 
     url.searchParams.set('divisionId', `${divisionId}`)
+    url.searchParams.set('leagueId', `${leagueId}`)
     url.searchParams.set('hydrate', 'team')
 
     return url.toString()
