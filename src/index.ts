@@ -2,6 +2,7 @@ import fastify, { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { GameService } from './services/GameService'
 import { SseManager } from './services/SseManager'
 import sseRoutes from './routes/sse'
+// import { WeatherService } from './services/WeatherService'
 
 const MLBStatsAPI = require('mlb-stats-api')
 
@@ -9,6 +10,7 @@ const app: FastifyInstance = fastify({ logger: true })
 
 const mlbStats = new MLBStatsAPI()
 const gameService = new GameService()
+// const weatherService = new WeatherService()
 const sseManager = new SseManager()
 
 app.register(sseRoutes)
@@ -16,26 +18,26 @@ app.register(sseRoutes)
 // GET all items
 app.get('/weather', async (request, reply: FastifyReply) => {
   try {
-    // const url = 'https://api.open-meteo.com/v1/forecast?latitude=38.78&longitude=-90.59&current=temperature_2m,wind_speed_10m,cloud_cover&hourly=precipitation_probability&temperature_unit=fahrenheit&wind_speed_unit=mph'
-    // const responses = await fetch(url);
+    const url = 'https://api.open-meteo.com/v1/forecast?latitude=38.78&longitude=-90.59&current=temperature_2m,wind_speed_10m,cloud_cover,weather_code&hourly=precipitation_probability&temperature_unit=fahrenheit&wind_speed_unit=mph&minutely_15=weather_code'
+    const responses = await fetch(url);
 
-    // const response = await responses.json()
+    const response = await responses.json()
 
-    // return reply.status(201).send(response)
+    return reply.status(201).send(response)
 
-    const url = `https://statsapi.mlb.com/api/v1/schedule?sportId=1&teamId=138&startDate=2026-03-25&endDate=2027-01-01`
-  const response = await fetch(url)
-  const data = await response.json()
-  const schedule: any = data.dates
-  const allGames: any = schedule.flatMap((date: any) => date.games)
-  const now = new Date()
+  // const url = `https://statsapi.mlb.com/api/v1/schedule?sportId=1&teamId=138&startDate=2026-03-25&endDate=2027-01-01`
+  // const response = await fetch(url)
+  // const data = await response.json()
+  // const schedule: any = data.dates
+  // const allGames: any = schedule.flatMap((date: any) => date.games)
+  // const now = new Date()
 
-  const games = allGames.sort(
-    (a: any, b: any) =>
-      new Date(a.gameDate).valueOf() - new Date(b.gameDate).valueOf()
-  )
+  // const games = allGames.sort(
+  //   (a: any, b: any) =>
+  //     new Date(a.gameDate).valueOf() - new Date(b.gameDate).valueOf()
+  // )
 
-  return reply.status(201).send(games)
+  // return reply.status(201).send(games)
 
   // console.log({games})
 
@@ -82,6 +84,45 @@ app.get('/api/games', async () => {
 
   return gameService.getGames()
 })
+
+// app.get('/api/live-weather-time', async (request, reply) => {
+//   reply.raw.setHeader(
+//     'Content-Type',
+//     'text/event-stream'
+//   )
+
+//   reply.raw.setHeader(
+//     'Cache-Control',
+//     'no-cache'
+//   )
+
+//   reply.raw.setHeader(
+//     'Connection',
+//     'keep-alive'
+//   )
+
+//   reply.raw.setHeader(
+//     'Access-Control-Allow-Origin',
+//     '*'
+//   )
+
+//   reply.raw.flushHeaders()
+
+//   sseManager.addClient(reply.raw)
+
+//   reply.raw.write(
+//     `data: ${JSON.stringify(weatherService.getWeatherTime())}\n\n`
+//   )
+
+//   return reply
+// })
+
+// // DEBUGGING
+
+// app.get('/api/weather-time', async () => {
+
+//   return weatherService.getWeatherTime()
+// })
 
 // GET single item
 app.get('/items/:id', async (request: FastifyRequest<{ Params: { id: string } }>, reply) => {
@@ -202,9 +243,11 @@ app.get('/items/:id', async (request: FastifyRequest<{ Params: { id: string } }>
 setInterval(async () => {
   try {
     await gameService.refresh()
+    // await weatherService.refresh()
 
     sseManager.broadcast(
       gameService.getGames()
+      // weatherService.getWeatherTime()
     )
   } catch (err) {
     app.log.error(err)
@@ -214,6 +257,7 @@ setInterval(async () => {
 const start = async () => {
   try {
     await gameService.refresh()
+    // await weatherService.refresh()
 
     await app.listen({ port: 3000 })
 

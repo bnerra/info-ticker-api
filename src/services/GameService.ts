@@ -1,6 +1,7 @@
 import { fetchGamePks } from '../constants/fetchGames'
 import { mlbTeams } from '../constants/mlbData'
 import { mlbEndpoints } from '../constants/mlbEndpoints'
+import { weatherCodeMap } from '../constants/weatherCodeMap'
 import { GameData } from '../types/GameData'
 
 const mockStandings: any = [
@@ -19,6 +20,8 @@ enum ViewStatus {
 
 export interface GamesCache {
   viewStatus: ViewStatus
+  weatherDateTime: any,
+  lastUpdated: any,
   currentGame: any
   lastGame: any
   nextGame: any
@@ -29,11 +32,41 @@ export interface GamesCache {
 export class GameService {
   private cache: GamesCache = {
     viewStatus: ViewStatus.Concluded,
+    weatherDateTime: {},
+    lastUpdated: null,
     currentGame: {},
     lastGame: {},
     nextGame: {},
     divisionStandings: {},
     inningByInning: {}
+  }
+
+  async fetchWeatherDateTimeData() {
+    const url = 'https://api.open-meteo.com/v1/forecast?latitude=38.78&longitude=-90.59&current=temperature_2m,wind_speed_10m,cloud_cover,weather_code&hourly=precipitation_probability&temperature_unit=fahrenheit&wind_speed_unit=mph'
+    const responses = await fetch(url)
+    const response = await responses.json()
+
+    const weatherCode = response.current.weather_code
+
+    const date = new Date()
+
+    const data = {
+      temperature: `${Math.round(response.current.temperature_2m)}\u00B0F`,
+      forecast: weatherCodeMap[weatherCode] ?? '',
+      date: new Intl.DateTimeFormat('en-GB', {
+        weekday: 'short',
+        month: 'short',
+        day: '2-digit'
+      })
+      .format(date),
+      time: new Date().toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      })
+    }
+
+    return data
   }
 
   async divisionStandings(divisionId: number, leagueId: number) {
@@ -66,6 +99,10 @@ export class GameService {
   }
 
   async refresh() {
+    const weatherDateTimeData = await this.fetchWeatherDateTimeData()
+
+    this.cache.weatherDateTime = await weatherDateTimeData
+
     const gamePks = await fetchGamePks()
 
     const {
@@ -89,7 +126,6 @@ export class GameService {
       const isTopInning = data.liveData.linescore.isTopInning
 
       const getBatterData = async (batterId: number) => {
-        // console.log({batterId})
         const team = isTopInning ? 'away' : 'home'
         const playerString = `ID${batterId}`
         const playerInfo = await this.playerInfo(batterId)
@@ -97,32 +133,20 @@ export class GameService {
         const players = data.liveData.boxscore.teams[team].players
 
         return {
-          // name: 'Slugger',
-          // number: 52,
-          // average: '.347',
           name: playerInfo.boxscoreName,
-          // number: data.liveData.boxscore.teams[team].players[`ID${batterId}`].jerseyNumber || '',
-          number: players[playerString].jerseyNumber || 99,
-          average: data.liveData.boxscore.teams[team].players[`ID${batterId}`].seasonStats.batting.avg || '.000',
+          number: players[playerString]?.jerseyNumber || 'x',
+          average: data?.liveData?.boxscore?.teams[team]?.players[`ID${batterId}`]?.seasonStats.batting.avg || '.000',
         }
       }
 
       const getPitcherData = async (pitcherId: number) => {
         
         const team = !isTopInning ? 'away' : 'home'
-        const playerString = `ID${pitcherId}`
         const playerInfo = await this.playerInfo(pitcherId)
-        // console.log({pitcherId, team})
-
-        // const test = data.liveData.boxscore.teams[team].players.ID664208
-
-        // console.log({test})
 
         return {
           name: playerInfo.boxscoreName,
-          pitchCount: data.liveData.boxscore.teams[team].players[`ID${pitcherId}`].stats.pitching.pitchesThrown || 999,
-          // name: 'Aguerro',
-          // pitchCount: 37,
+          pitchCount: data?.liveData?.boxscore?.teams[team]?.players[`ID${pitcherId}`]?.stats.pitching.pitchesThrown || '00',
         }
       }
 
@@ -137,6 +161,7 @@ export class GameService {
         status: data.gameData.status,
         gamePk: data.gamePk,
         metaData: {
+          detailedState: data.gameData.status.detailedState,
           date: data.gameData.datetime.officialDate.replaceAll('-', '/'),
           time: `${data.gameData.datetime.time} ${data.gameData.datetime.ampm}`,
           inning: data.liveData.linescore.currentInning,
@@ -166,9 +191,32 @@ export class GameService {
           teamId: data.gameData.teams.away.id,
         },
       }
+
+      const homeInnings: any = {
+        teamId: data.gameData.teams.home.id,
+        name: data.gameData.teams.home.abbreviation,
+        innings: data.liveData.linescore.innings.map((inning: any) => inning.home.runs),
+        runs: data.liveData.boxscore.teams.home.teamStats.batting.runs,
+        hits: data.liveData.boxscore.teams.home.teamStats.batting.hits,
+        errors: data.liveData.boxscore.teams.home.teamStats.fielding.errors,
+      }
+
+      const awayInnings: any = {
+        teamId: data.gameData.teams.away.id,
+        name: data.gameData.teams.away.abbreviation,
+        innings: data.liveData.linescore.innings.map((inning: any) => inning.away.runs),
+        runs: data.liveData.boxscore.teams.away.teamStats.batting.runs,
+        hits: data.liveData.boxscore.teams.away.teamStats.batting.hits,
+        errors: data.liveData.boxscore.teams.away.teamStats.fielding.errors,
+      }
+
+      this.cache.inningByInning = {
+        homeInnings: homeInnings,
+        awayInnings: awayInnings,
+      }
     }
 
-    if (lastPk) {
+    if (lastPk && !livePk) {
       const url = mlbEndpoints.liveFeed(lastPk)
       const response = await fetch(url)
       const data = await response.json()
@@ -215,10 +263,6 @@ export class GameService {
         hits: data.liveData.boxscore.teams.away.teamStats.batting.hits,
         errors: data.liveData.boxscore.teams.away.teamStats.fielding.errors,
       }
-
-      // this.cache.inningByInning = {
-      //   hello: 'goodbye'
-      // }
 
       this.cache.inningByInning = {
         homeInnings: homeInnings,
@@ -299,6 +343,7 @@ export class GameService {
     }
 
 
+    this.cache.lastUpdated = Date.now()
 
 
   }
