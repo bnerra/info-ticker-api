@@ -25,6 +25,6 @@ export const weatherCodeMap: Record<number, string> = {
   85: 'Snow Showers',
   86: 'Heavy Snow Showers',
   95: 'Thunderstorms',
-  96: 'Thunderstorms/Hail',
+  97: 'Heavy Thunderstorms',
   99: 'Thunderstomrs/Hail'
 }

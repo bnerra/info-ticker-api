@@ -41,8 +41,28 @@ export class GameService {
     inningByInning: {}
   }
 
+  altDate(dateStr: any) {
+
+    const [year, month, day] = dateStr.split('-')
+    const shiftDate = new Date(year, month - 1, day)
+
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      weekday: 'short',
+      month: '2-digit',
+      day: '2-digit',
+      timeZone: 'UTC'
+    })
+
+    const parts = formatter.formatToParts(shiftDate)
+    const weekday = parts.find((p: any) => p.type === 'weekday')?.value
+    const mm = parts.find((p: any) => p.type === 'month')?.value
+    const dd = parts.find((p: any) => p.type === 'day')?.value
+
+    return `${weekday} ${mm}/${dd}`
+  }
+
   async fetchWeatherDateTimeData() {
-    const url = 'https://api.open-meteo.com/v1/forecast?latitude=38.78&longitude=-90.59&current=temperature_2m,wind_speed_10m,cloud_cover,weather_code&hourly=precipitation_probability&temperature_unit=fahrenheit&wind_speed_unit=mph'
+    const url = 'https://api.open-meteo.com/v1/forecast?latitude=38.79&longitude=-90.63&current=temperature_2m,wind_speed_10m,cloud_cover,weather_code&hourly=precipitation_probability&temperature_unit=fahrenheit&wind_speed_unit=mph'
     const responses = await fetch(url)
     const response = await responses.json()
 
@@ -52,6 +72,7 @@ export class GameService {
 
     const data = {
       temperature: `${Math.round(response.current.temperature_2m)}\u00B0F`,
+      weatherCode,
       forecast: weatherCodeMap[weatherCode] ?? '',
       date: new Intl.DateTimeFormat('en-GB', {
         weekday: 'short',
@@ -224,7 +245,8 @@ export class GameService {
       this.cache.lastGame = {
         gamePk: data.gamePk,
         metaData: {
-          date: data.gameData.datetime.officialDate.replaceAll('-', '/'),
+          // date: data.gameData.datetime.officialDate.replaceAll('-', '/'),
+          date: this.altDate(data.gameData.datetime.officialDate)
         },
         homeTeam: {
           name: data.gameData.teams.home.name,
@@ -271,7 +293,7 @@ export class GameService {
       
     }
 
-    if (nextPk) {
+    if (nextPk && !livePk) {
       const url = mlbEndpoints.liveFeed(nextPk)
       const response = await fetch(url)
       const data = await response.json()
@@ -291,7 +313,8 @@ export class GameService {
       this.cache.nextGame = {
         gamePk: data.gamePk,
         metaData: {
-          date: data.gameData.datetime.officialDate.replaceAll('-', '/'),
+          // date: data.gameData.datetime.officialDate.replaceAll('-', '/'),
+          date: this.altDate(data.gameData.datetime.officialDate),
           time: `${data.gameData.datetime.time} ${data.gameData.datetime.ampm}`
         },
         homeTeam: {
