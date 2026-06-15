@@ -237,7 +237,7 @@ export class GameService {
       }
     }
 
-    if (lastPk && !livePk) {
+    if (lastPk) {
       const url = mlbEndpoints.liveFeed(lastPk)
       const response = await fetch(url)
       const data = await response.json()
@@ -293,7 +293,7 @@ export class GameService {
       
     }
 
-    if (nextPk && !livePk) {
+    if (nextPk) {
       const url = mlbEndpoints.liveFeed(nextPk)
       const response = await fetch(url)
       const data = await response.json()
@@ -304,11 +304,57 @@ export class GameService {
       const homePitcherResponseData = await homePitcherResponse.json()
       const homePitcherData = homePitcherResponseData.people[0]
 
-      const awayPitcherId = data.gameData.probablePitchers.away.id
-      const awayPitcherUrl = mlbEndpoints.playerInfo(awayPitcherId)
-      const awayPitcherResponse = await fetch(awayPitcherUrl)
-      const awayPitcherResponseData = await awayPitcherResponse.json()
-      const awayPitcherData = awayPitcherResponseData.people[0]
+      const getHomePitcherData = async () => {
+        const homePitcherId = data?.gameData?.probablePitchers?.home?.id
+        if (homePitcherId) {
+          const homePitcherUrl = mlbEndpoints.playerInfo(homePitcherId)
+          const homePitcherResponse = await fetch(homePitcherUrl)
+          const homePitcherResponseData = await homePitcherResponse.json()
+          const homePitcherData = homePitcherResponseData.people[0]
+
+          return {
+            name: homePitcherData.boxscoreName,
+            hand: homePitcherData.pitchHand.code,
+            era: data.liveData.boxscore.teams.home.players[`ID${homePitcherId}`].seasonStats.pitching.era,
+            wins: data.liveData.boxscore.teams.home.players[`ID${homePitcherId}`].seasonStats.pitching.wins,
+            losses: data.liveData.boxscore.teams.home.players[`ID${homePitcherId}`].seasonStats.pitching.losses,
+          }
+        }
+
+        return {
+          name: 'n/a',
+          hand: '?',
+          era: '-',
+          wins: '',
+          losses: ''
+        }
+      }
+
+      const getAwayPitcherData = async () => {
+        const awayPitcherId = data?.gameData?.probablePitchers?.away?.id
+        if (awayPitcherId) {
+          const awayPitcherUrl = mlbEndpoints.playerInfo(awayPitcherId)
+          const awayPitcherResponse = await fetch(awayPitcherUrl)
+          const awayPitcherResponseData = await awayPitcherResponse.json()
+          const awayPitcherData = awayPitcherResponseData.people[0]
+
+          return {
+            name: awayPitcherData.boxscoreName,
+            hand: awayPitcherData.pitchHand.code,
+            era: data.liveData.boxscore.teams.away.players[`ID${awayPitcherId}`].seasonStats.pitching.era,
+            wins: data.liveData.boxscore.teams.away.players[`ID${awayPitcherId}`].seasonStats.pitching.wins,
+            losses: data.liveData.boxscore.teams.away.players[`ID${awayPitcherId}`].seasonStats.pitching.losses,
+          }
+        }
+
+        return {
+          name: 'n/a',
+          hand: '?',
+          era: '0.00',
+          wins: '',
+          losses: ''
+        }
+      }
 
       this.cache.nextGame = {
         gamePk: data.gamePk,
@@ -325,11 +371,16 @@ export class GameService {
             losses: data.gameData.teams.home.record.losses
           },
           probablePitcher: {
-            name: homePitcherData.boxscoreName,
-            hand: homePitcherData.pitchHand.code,
-            era: data.liveData.boxscore.teams.home.players[`ID${homePitcherId}`].seasonStats.pitching.era,
-            wins: data.liveData.boxscore.teams.home.players[`ID${homePitcherId}`].seasonStats.pitching.wins,
-            losses: data.liveData.boxscore.teams.home.players[`ID${homePitcherId}`].seasonStats.pitching.losses,
+            name: (await getHomePitcherData()).name,
+            hand: (await getHomePitcherData()).hand,
+            era: (await getHomePitcherData()).era,
+            wins: (await getHomePitcherData()).wins,
+            losses: (await getHomePitcherData()).losses
+            // name: homePitcherData.boxscoreName,
+            // hand: homePitcherData.pitchHand.code,
+            // era: data.liveData.boxscore.teams.home.players[`ID${homePitcherId}`].seasonStats.pitching.era,
+            // wins: data.liveData.boxscore.teams.home.players[`ID${homePitcherId}`].seasonStats.pitching.wins,
+            // losses: data.liveData.boxscore.teams.home.players[`ID${homePitcherId}`].seasonStats.pitching.losses,
           }
         },
         awayTeam: {
@@ -341,11 +392,16 @@ export class GameService {
             losses: data.gameData.teams.away.record.losses
           },
           probablePitcher: {
-            name: awayPitcherData.boxscoreName,
-            hand: awayPitcherData.pitchHand.code,
-            era: data.liveData.boxscore.teams.away.players[`ID${awayPitcherId}`].seasonStats.pitching.era,
-            wins: data.liveData.boxscore.teams.away.players[`ID${awayPitcherId}`].seasonStats.pitching.wins,
-            losses: data.liveData.boxscore.teams.away.players[`ID${awayPitcherId}`].seasonStats.pitching.losses,
+            // name: awayPitcherData.boxscoreName,
+            // hand: awayPitcherData.pitchHand.code,
+            name: (await getAwayPitcherData()).name,
+            hand: (await getAwayPitcherData()).hand,
+            // era: data.liveData.boxscore.teams.away.players[`ID${awayPitcherId}`].seasonStats.pitching.era,
+            // wins: data.liveData.boxscore.teams.away.players[`ID${awayPitcherId}`].seasonStats.pitching.wins,
+            // losses: data.liveData.boxscore.teams.away.players[`ID${awayPitcherId}`].seasonStats.pitching.losses,
+            era: (await getAwayPitcherData()).era,
+            wins: (await getAwayPitcherData()).wins,
+            losses: (await getAwayPitcherData()).losses
           }
         },
       }
