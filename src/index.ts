@@ -11,6 +11,11 @@ const sseManager = new SseManager()
 
 app.register(sseRoutes)
 
+app.get('/', async (request, reply: FastifyReply) => {
+
+  return reply.status(201).send('Welcome Earthling.')
+})
+
 // GET all items
 app.get('/weather', async (request, reply: FastifyReply) => {
   try {
