@@ -132,11 +132,11 @@ export class GameService {
       nextPk
     } = gamePks
 
-    console.log({
-      livePk,
-      lastPk,
-      nextPk
-    })
+    // console.log({
+    //   livePk,
+    //   lastPk,
+    //   nextPk
+    // })
 
     this.cache.viewStatus = ViewStatus.Concluded
 
@@ -171,11 +171,11 @@ export class GameService {
         }
       }
 
-      console.log({
-        balls: data.liveData.linescore.balls,
-        strikes: data.liveData.linescore.strikes,
-        outs: data.liveData.linescore.outs,
-      })
+      // console.log({
+      //   balls: data.liveData.linescore.balls,
+      //   strikes: data.liveData.linescore.strikes,
+      //   outs: data.liveData.linescore.outs,
+      // })
 
       this.cache.viewStatus = ViewStatus.In_Progress
       this.cache.currentGame = {
