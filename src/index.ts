@@ -1,9 +1,19 @@
-import fastify, { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
+import fastify, { FastifyInstance, FastifyReply } from 'fastify'
+import fastifyStatic from '@fastify/static'
+import path from 'path'
 import { GameService } from './services/GameService'
 import { SseManager } from './services/SseManager'
 import sseRoutes from './routes/sse'
 
 const app: FastifyInstance = fastify({ logger: true })
+
+app.register(fastifyStatic, {
+  root: path.join(__dirname, '../info-ticker-ui/dist')
+})
+
+app.get('/*', (req, reply) => {
+  return reply.sendFile('index.html')
+})
 
 const gameService = new GameService()
 // const weatherService = new WeatherService()
@@ -69,45 +79,6 @@ app.get('/api/games', async () => {
 
   return gameService.getGames()
 })
-
-// app.get('/api/live-weather-time', async (request, reply) => {
-//   reply.raw.setHeader(
-//     'Content-Type',
-//     'text/event-stream'
-//   )
-
-//   reply.raw.setHeader(
-//     'Cache-Control',
-//     'no-cache'
-//   )
-
-//   reply.raw.setHeader(
-//     'Connection',
-//     'keep-alive'
-//   )
-
-//   reply.raw.setHeader(
-//     'Access-Control-Allow-Origin',
-//     '*'
-//   )
-
-//   reply.raw.flushHeaders()
-
-//   sseManager.addClient(reply.raw)
-
-//   reply.raw.write(
-//     `data: ${JSON.stringify(weatherService.getWeatherTime())}\n\n`
-//   )
-
-//   return reply
-// })
-
-// // DEBUGGING
-
-// app.get('/api/weather-time', async () => {
-
-//   return weatherService.getWeatherTime()
-// })
 
 
 // POST (Create) item
