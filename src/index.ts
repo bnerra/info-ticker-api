@@ -1,27 +1,29 @@
-import fastify, { FastifyInstance, FastifyReply } from 'fastify'
+import fastify from 'fastify'
+import { FastifyInstance, FastifyReply } from 'fastify'
 import fastifyStatic from '@fastify/static'
 import path from 'path'
 import { GameService } from './services/GameService'
 import { SseManager } from './services/SseManager'
 import sseRoutes from './routes/sse'
 
-const app: FastifyInstance = fastify({ logger: true })
-
-app.register(fastifyStatic, {
-  root: path.join(__dirname, '../info-ticker-ui/dist')
+const app: FastifyInstance = fastify({
+  logger: true,
 })
 
-app.get('/*', (req, reply) => {
-  return reply.sendFile('index.html')
+app.register(fastifyStatic, {
+  root: path.resolve('../info-ticker-ui/dist')
+})
+
+app.setNotFoundHandler((req, reply) => {
+  reply.sendFile('index.html')
 })
 
 const gameService = new GameService()
-// const weatherService = new WeatherService()
 const sseManager = new SseManager()
 
 app.register(sseRoutes)
 
-app.get('/', async (request, reply: FastifyReply) => {
+app.get('/text', async (request, reply: FastifyReply) => {
 
   return reply.status(201).send('Welcome Earthling.')
 })
