@@ -28,6 +28,27 @@ app.get('/text', async (request, reply: FastifyReply) => {
   return reply.status(201).send('Welcome Earthling.')
 })
 
+app.get('/batters', async (request, reply: FastifyReply) => {
+  const url = `https://statsapi.mlb.com/api/v1/game/823045/boxscore`
+  const responses = await fetch(url)
+  const response = await responses.json()
+
+  const awayPlayers = Object.values(response.teams.away.players)
+  const awayBatters = awayPlayers.filter((player: any) => Object.keys(player.stats.batting).length > 0)
+
+  const battingLeaders = awayBatters.map((batter: any) => ({
+    name: batter.person.boxscoreName,
+    hits: batter.stats.batting?.hits ?? 0,
+    rbi: batter.stats.batting?.rbi ?? 0,
+    hr: batter.stats.batting?.homeruns ?? 0,
+    summary: batter.stats.batting?.summary ?? '',
+  }))
+    .sort((a, b) => b.hits - a.hits)
+    .slice(0, 3)
+  
+  return battingLeaders
+})
+
 // GET all items
 app.get('/weather', async (request, reply: FastifyReply) => {
   try {

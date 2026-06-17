@@ -90,6 +90,38 @@ export class GameService {
     return data
   }
 
+  async fetchBattingStats(gamePk: number, team: string) {
+    const url = `https://statsapi.mlb.com/api/v1/game/${gamePk}/boxscore`
+    const responses = await fetch(url)
+    const response = await responses.json()
+
+    const players = Object.values(response.teams[team].players)
+    const batters = players.filter((player: any) => Object.keys(player.stats.batting).length > 0)
+
+    const battingLeaders = batters.sort((a: any, b: any): any => {
+      const aBat = a.stats.batting
+      const bBat = b.stats.batting
+
+      return (
+        (bBat.homeRuns ?? 0) - (aBat.homeRuns ?? 0) ||
+        (bBat.rbi ?? 0) - (aBat.rbi ?? 0) ||
+        (bBat.hits ?? 0) - (aBat.hits ?? 0) ||
+        (bBat.runs ?? 0) - (aBat.runs ?? 0)
+      )
+    })
+
+    const filteredLeaders = battingLeaders.map((player: any) => ({
+      name: player.person.boxscoreName,
+      hits: player.stats.batting?.hits ?? 0,
+      rbi: player.stats.batting?.rbi ?? 0,
+      hr: player.stats.batting?.homeruns ?? 0,
+      summary: player.stats.batting?.summary ?? '',
+    }))
+      .slice(0, 3)
+    
+    return filteredLeaders
+  }
+
   async divisionStandings(divisionId: number, leagueId: number) {
     const url = mlbEndpoints.divisionStandings(divisionId, leagueId)
     const response = await fetch(url)
@@ -132,11 +164,11 @@ export class GameService {
       nextPk
     } = gamePks
 
-    // console.log({
-    //   livePk,
-    //   lastPk,
-    //   nextPk
-    // })
+    console.log({
+      livePk,
+      lastPk,
+      nextPk
+    })
 
     this.cache.viewStatus = ViewStatus.Concluded
 
@@ -245,7 +277,6 @@ export class GameService {
       this.cache.lastGame = {
         gamePk: data.gamePk,
         metaData: {
-          // date: data.gameData.datetime.officialDate.replaceAll('-', '/'),
           date: this.altDate(data.gameData.datetime.officialDate)
         },
         homeTeam: {
@@ -255,7 +286,8 @@ export class GameService {
           record: {
             wins: data.gameData.teams.home.record.wins,
             losses: data.gameData.teams.home.record.losses
-          }
+          },
+          battingLeaders: await this.fetchBattingStats(lastPk, 'home'),
         },
         awayTeam: {
           name: data.gameData.teams.away.name,
@@ -264,7 +296,8 @@ export class GameService {
           record: {
             wins: data.gameData.teams.away.record.wins,
             losses: data.gameData.teams.away.record.losses
-          }
+          },
+          battingLeaders: await this.fetchBattingStats(lastPk, 'away'),
         },
       }
       
