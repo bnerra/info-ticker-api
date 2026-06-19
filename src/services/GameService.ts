@@ -27,6 +27,7 @@ export interface GamesCache {
   nextGame: any
   divisionStandings: any
   inningByInning: any
+  battingLeaders: any
 }
 
 export class GameService {
@@ -38,7 +39,8 @@ export class GameService {
     lastGame: {},
     nextGame: {},
     divisionStandings: {},
-    inningByInning: {}
+    inningByInning: {},
+    battingLeaders: {}
   }
 
   altDate(dateStr: any) {
@@ -267,9 +269,14 @@ export class GameService {
         homeInnings: homeInnings,
         awayInnings: awayInnings,
       }
+
+      this.cache.battingLeaders = {
+        home: await this.fetchBattingStats(livePk, 'home'),
+        away: await this.fetchBattingStats(livePk, 'away'),
+      }
     }
 
-    if (lastPk) {
+    if (lastPk && !livePk) {
       const url = mlbEndpoints.liveFeed(lastPk)
       const response = await fetch(url)
       const data = await response.json()
@@ -287,7 +294,6 @@ export class GameService {
             wins: data.gameData.teams.home.record.wins,
             losses: data.gameData.teams.home.record.losses
           },
-          battingLeaders: await this.fetchBattingStats(lastPk, 'home'),
         },
         awayTeam: {
           name: data.gameData.teams.away.name,
@@ -297,7 +303,6 @@ export class GameService {
             wins: data.gameData.teams.away.record.wins,
             losses: data.gameData.teams.away.record.losses
           },
-          battingLeaders: await this.fetchBattingStats(lastPk, 'away'),
         },
       }
       
@@ -322,6 +327,11 @@ export class GameService {
       this.cache.inningByInning = {
         homeInnings: homeInnings,
         awayInnings: awayInnings,
+      }
+
+      this.cache.battingLeaders = {
+        home: await this.fetchBattingStats(lastPk, 'home'),
+        away: await this.fetchBattingStats(lastPk, 'away'),
       }
       
     }
