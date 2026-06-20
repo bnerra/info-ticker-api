@@ -2,7 +2,6 @@ import { fetchGamePks } from '../constants/fetchGames'
 import { mlbTeams } from '../constants/mlbData'
 import { mlbEndpoints } from '../constants/mlbEndpoints'
 import { weatherCodeMap } from '../constants/weatherCodeMap'
-import { GameData } from '../types/GameData'
 
 const mockStandings: any = [
     { abbreviation: 'CHC', wins: 99, losses: 26, gamesBack: 5 },
@@ -28,6 +27,7 @@ export interface GamesCache {
   divisionStandings: any
   inningByInning: any
   battingLeaders: any
+  pitchingLeaders: any
 }
 
 export class GameService {
@@ -40,7 +40,8 @@ export class GameService {
     nextGame: {},
     divisionStandings: {},
     inningByInning: {},
-    battingLeaders: {}
+    battingLeaders: {},
+    pitchingLeaders: {}
   }
 
   altDate(dateStr: any) {
@@ -153,6 +154,18 @@ export class GameService {
     return responseData.people[0]
   }
 
+  async fetchPitcherRecord(id: number, side: string, data: any) {
+    const playerData = data.liveData.boxscore.teams[side].players[`ID${id}`]
+
+    return `(${playerData.seasonStats.pitching.wins}-${playerData.seasonStats.pitching.losses})`
+  }
+
+  async fetchPitcherSaves(id: number, side: string, data: any) {
+    const playerData = data.liveData.boxscore.teams[side].players[`ID${id}`]
+
+    return playerData.seasonStats.pitching.saves
+  }
+
   async refresh() {
     const weatherDateTimeData = await this.fetchWeatherDateTimeData()
 
@@ -189,8 +202,8 @@ export class GameService {
 
         return {
           name: playerInfo.boxscoreName,
-          number: players[playerString]?.jerseyNumber || 'x',
-          average: data?.liveData?.boxscore?.teams[team]?.players[`ID${batterId}`]?.seasonStats.batting.avg || '.000',
+          number: players[playerString]?.jerseyNumber || '#',
+          average: data?.liveData?.boxscore?.teams[team]?.players[`ID${batterId}`]?.seasonStats.batting.avg || '',
         }
       }
 
@@ -201,7 +214,7 @@ export class GameService {
 
         return {
           name: playerInfo.boxscoreName,
-          pitchCount: data?.liveData?.boxscore?.teams[team]?.players[`ID${pitcherId}`]?.stats.pitching.pitchesThrown || '00',
+          pitchCount: data?.liveData?.boxscore?.teams[team]?.players[`ID${pitcherId}`]?.stats.pitching.pitchesThrown || ' -',
         }
       }
 
@@ -281,6 +294,8 @@ export class GameService {
       const response = await fetch(url)
       const data = await response.json()
 
+      const awayWon = data.liveData.linescore.teams.away.runs > data.liveData.linescore.teams.home.runs
+
       this.cache.lastGame = {
         gamePk: data.gamePk,
         metaData: {
@@ -333,7 +348,53 @@ export class GameService {
         home: await this.fetchBattingStats(lastPk, 'home'),
         away: await this.fetchBattingStats(lastPk, 'away'),
       }
-      
+
+      const decisions = {
+        winner: {
+          id: data.liveData.decisions.winner.id,
+          name: data.liveData.decisions.winner.fullName
+        },
+        loser: {
+          id: data.liveData.decisions.loser.id,
+          name: data.liveData.decisions.loser.fullName
+        },
+        save: {
+          id: data.liveData.decisions.save.id,
+          name: data.liveData.decisions.save.fullName
+        },
+      }
+
+      const decisionPitchers = [
+        {
+          type: 'winner',
+          side: awayWon ? 'away' : 'home',
+          id: decisions.winner.id,
+          name: decisions.winner.name,
+          label: 'W',
+          stats: await this.fetchPitcherRecord(decisions.winner.id, (awayWon ? 'away' : 'home'), data),
+        },
+        {
+          type: 'loser',
+          side: awayWon ? 'home' : 'away',
+          id: decisions.loser.id,
+          name: decisions.loser.name,
+          label: 'L',
+          stats: await this.fetchPitcherRecord(decisions.loser.id, (awayWon ? 'home' : 'away'), data),
+        }
+      ]
+
+      if (decisions.save) {
+        decisionPitchers.push({
+          type: 'save',
+          side: awayWon ? 'away' : 'home',
+          id: decisions.save.id,
+          name: decisions.save.name,
+          label: 'S',
+          stats: `(${await this.fetchPitcherSaves(decisions.save.id, (awayWon ? 'away' : 'home'), data)})`,
+        })
+      }
+
+      this.cache.pitchingLeaders = [...decisionPitchers]
     }
 
     if (nextPk) {
