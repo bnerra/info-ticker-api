@@ -358,10 +358,14 @@ export class GameService {
           id: data.liveData.decisions.loser.id,
           name: data.liveData.decisions.loser.fullName
         },
-        save: {
-          id: data.liveData.decisions.save.id,
-          name: data.liveData.decisions.save.fullName
-        },
+        ...(data.liveData.decisions.save
+          && {
+            save: {
+              id: data.liveData.decisions.save.id,
+              name: data.liveData.decisions.save.fullName
+            },
+          }
+        )
       }
 
       const decisionPitchers = [
