@@ -16,4 +16,20 @@ jobs:
           username: ${{ secrets.PI_USER }}
           key: ${{ secrets.PI_SSH_KEY }}
           script: |
-            ~/deploy-dashboard.sh
+            whoami
+            pwd
+            hostname
+            which node
+            node -v
+            which npm
+            npm -v
+            which pm2
+            pm2 list
+
+            cd projects/info-ticker-api
+
+            git status
+            git pull
+
+            npm install
+            npm run build
