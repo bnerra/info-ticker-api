@@ -41,7 +41,7 @@ export class GameService {
     divisionStandings: {},
     inningByInning: {},
     battingLeaders: {},
-    pitchingLeaders: {}
+    pitchingLeaders: []
   }
 
   altDate(dateStr: any) {
