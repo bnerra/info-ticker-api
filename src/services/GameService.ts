@@ -287,6 +287,35 @@ export class GameService {
         home: await this.fetchBattingStats(livePk, 'home'),
         away: await this.fetchBattingStats(livePk, 'away'),
       }
+
+      const homePitcherId: any = data.liveData.boxscore.teams.home.pitchers.at(-1)
+      const awayPitcherId: any = data.liveData.boxscore.teams.away.pitchers.at(-1)
+
+      this.cache.pitchingLeaders = [
+        {
+          side: 'home', 
+          id: homePitcherId,
+          // 669467
+          ...(homePitcherId
+            && {
+              name: data.liveData.boxscore.teams.home.players[`ID${homePitcherId}`].person.fullName,
+              jerseyNumber: data.liveData.boxscore.teams.home.players[`ID${homePitcherId}`].jerseyNumber,
+              stats: data.liveData.boxscore.teams.home.players[`ID${homePitcherId}`].stats.pitching.summary,
+            }
+          )
+        },
+        {
+          side: 'away',
+          id: awayPitcherId,
+          ...(awayPitcherId
+            && {
+              name: data.liveData.boxscore.teams.away.players[`ID${awayPitcherId}`].person.fullName,
+              jerseyNumber: data.liveData.boxscore.teams.away.players[`ID${awayPitcherId}`].jerseyNumber,
+              stats: data.liveData.boxscore.teams.away.players[`ID${awayPitcherId}`].stats.pitching.summary,
+            }
+          )
+        },
+      ]
     }
 
     if (lastPk && !livePk) {
@@ -467,7 +496,6 @@ export class GameService {
       this.cache.nextGame = {
         gamePk: data.gamePk,
         metaData: {
-          // date: data.gameData.datetime.officialDate.replaceAll('-', '/'),
           date: this.altDate(data.gameData.datetime.officialDate),
           time: `${data.gameData.datetime.time} ${data.gameData.datetime.ampm}`
         },
@@ -484,11 +512,6 @@ export class GameService {
             era: (await getHomePitcherData()).era,
             wins: (await getHomePitcherData()).wins,
             losses: (await getHomePitcherData()).losses
-            // name: homePitcherData.boxscoreName,
-            // hand: homePitcherData.pitchHand.code,
-            // era: data.liveData.boxscore.teams.home.players[`ID${homePitcherId}`].seasonStats.pitching.era,
-            // wins: data.liveData.boxscore.teams.home.players[`ID${homePitcherId}`].seasonStats.pitching.wins,
-            // losses: data.liveData.boxscore.teams.home.players[`ID${homePitcherId}`].seasonStats.pitching.losses,
           }
         },
         awayTeam: {
@@ -500,13 +523,8 @@ export class GameService {
             losses: data.gameData.teams.away.record.losses
           },
           probablePitcher: {
-            // name: awayPitcherData.boxscoreName,
-            // hand: awayPitcherData.pitchHand.code,
             name: (await getAwayPitcherData()).name,
             hand: (await getAwayPitcherData()).hand,
-            // era: data.liveData.boxscore.teams.away.players[`ID${awayPitcherId}`].seasonStats.pitching.era,
-            // wins: data.liveData.boxscore.teams.away.players[`ID${awayPitcherId}`].seasonStats.pitching.wins,
-            // losses: data.liveData.boxscore.teams.away.players[`ID${awayPitcherId}`].seasonStats.pitching.losses,
             era: (await getAwayPitcherData()).era,
             wins: (await getAwayPitcherData()).wins,
             losses: (await getAwayPitcherData()).losses
