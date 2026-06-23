@@ -12,9 +12,9 @@ const mockStandings: any = [
   ]
 
 enum ViewStatus {
-  In_Progress = 'IN_PROGRESS',
-  Upcoming = 'UPCOMING',
-  Concluded = 'CONCLUDED'
+  In_Progress = 'inProgress',
+  Upcoming = 'upcoming',
+  Concluded = 'concluded'
 }
 
 export interface GamesCache {
