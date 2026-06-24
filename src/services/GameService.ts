@@ -125,14 +125,14 @@ export class GameService {
     return filteredLeaders
   }
 
-  async divisionStandings(divisionId: number, leagueId: number) {
+  async divisionStandings(divisionId: number, leagueId: number, divisionName: string) {
     const url = mlbEndpoints.divisionStandings(divisionId, leagueId)
     const response = await fetch(url)
     const data = await response.json()
 
-    const NL_Central: any = data.records.find((record: any) => record.division.id === divisionId)
+    const division: any = data.records.find((record: any) => record.division.id === divisionId)
 
-    const standings = NL_Central.teamRecords.map((team: any) => ({
+    const standings = division.teamRecords.map((team: any) => ({
       teamId: team.team.id,
       divisionRank: team.divisionRank,
       wins: team.wins,
@@ -141,7 +141,7 @@ export class GameService {
     }))
 
     return {
-      divisionName: 'NL Central',
+      divisionName,
       standings: standings || mockStandings,
     }
   }
@@ -533,7 +533,15 @@ export class GameService {
       }
     }
 
-    this.cache.divisionStandings = await this.divisionStandings(205, 104)
+    const NLEast = await this.divisionStandings(204, 104, 'NL East')
+    const NLCentral = await this.divisionStandings(205, 104, 'NL Central')
+    const NLWest = await this.divisionStandings(203, 104, 'NL West')
+
+    this.cache.divisionStandings= [
+      NLEast,
+      NLCentral,
+      NLWest
+    ]
 
     // TODO: HELPER FUNCTION RELOCATE
     const addAbbreviation = (values: any[]) => {
