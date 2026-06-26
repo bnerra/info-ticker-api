@@ -29,6 +29,7 @@ export interface GamesCache {
   inningByInning: any
   battingLeaders: any
   pitchingLeaders: any
+  postponedGame: any
 }
 
 export class GameService {
@@ -42,7 +43,8 @@ export class GameService {
     divisionStandings: {},
     inningByInning: {},
     battingLeaders: {},
-    pitchingLeaders: []
+    pitchingLeaders: [],
+    postponedGame: {}
   }
 
   altDate(dateStr: any) {
@@ -63,6 +65,19 @@ export class GameService {
     const dd = parts.find((p: any) => p.type === 'day')?.value
 
     return `${weekday} ${mm}/${dd}`
+  }
+
+  getTimeFromISO(isoString: string) {
+    const date = new Date(isoString)
+
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Chicago',
+      hour: 'numeric',
+      minute: 'numeric',
+      hour12: true
+    })
+
+    return formatter.format(date)
   }
 
   async fetchWeatherDateTimeData() {
@@ -189,6 +204,7 @@ export class GameService {
     })
 
     this.cache.viewStatus = ViewStatus.Concluded
+    this.cache.postponedGame = null
 
     if (livePk) {
       const url = mlbEndpoints.liveFeed(livePk)
@@ -220,12 +236,6 @@ export class GameService {
           pitchCount: data?.liveData?.boxscore?.teams[team]?.players[`ID${pitcherId}`]?.stats.pitching.pitchesThrown || ' -',
         }
       }
-
-      // console.log({
-      //   balls: data.liveData.linescore.balls,
-      //   strikes: data.liveData.linescore.strikes,
-      //   outs: data.liveData.linescore.outs,
-      // })
 
       this.cache.viewStatus = ViewStatus.In_Progress
       this.cache.currentGame = {
@@ -532,6 +542,50 @@ export class GameService {
             wins: (await getAwayPitcherData()).wins,
             losses: (await getAwayPitcherData()).losses
           }
+        },
+      }
+    }
+
+    if(postponedPk && !livePk) {
+      const url = `https://statsapi.mlb.com/api/v1/schedule?sportId=1&teamId=138&startDate=2026-03-25&endDate=2027-01-01`
+
+      const response = await fetch(url)
+      const data = await response.json()
+
+      const games = data.dates
+        .flatMap((date: any) => date.games)
+        .sort(
+          (a: any, b: any) =>
+            new Date(a.gameDate).valueOf() -
+            new Date(b.gameDate).valueOf()
+        )
+        
+      const postponedGame = games.find((game: any) => game.gamePk === postponedPk && game.status.detailedState === 'Postponed')
+
+      this.cache.postponedGame = {
+        gamePk: postponedGame.gamePk,
+        metaData: {
+          originalDate: this.altDate(postponedGame.gameDate.split('T')[0]),
+          rescheduledDate: this.altDate(postponedGame.rescheduleGameDate),
+          rescheduledTime: this.getTimeFromISO(postponedGame.rescheduleDate),
+          status: postponedGame.status.detailedState,
+          reason: postponedGame.status.reason
+        },
+        homeTeam: {
+          name: postponedGame.teams.home.team.name,
+          teamId: postponedGame.teams.home.team.id,
+          record: {
+            wins: postponedGame.teams.home.leagueRecord.wins,
+            losses: postponedGame.teams.home.leagueRecord.losses
+          },
+        },
+        awayTeam: {
+          name: postponedGame.teams.away.team.name,
+          teamId: postponedGame.teams.away.team.id,
+          record: {
+            wins: postponedGame.teams.away.leagueRecord.wins,
+            losses: postponedGame.teams.away.leagueRecord.losses
+          },
         },
       }
     }
