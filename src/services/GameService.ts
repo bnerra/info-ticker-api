@@ -1,3 +1,4 @@
+import { isEmpty } from 'lodash'
 import { fetchGamePks } from '../constants/fetchGames'
 import { mlbTeams } from '../constants/mlbData'
 import { mlbEndpoints } from '../constants/mlbEndpoints'
@@ -176,13 +177,15 @@ export class GameService {
     const {
       livePk,
       lastPk,
-      nextPk
+      nextPk,
+      postponedPk
     } = gamePks
 
     console.log({
       livePk,
       lastPk,
-      nextPk
+      nextPk,
+      postponedPk
     })
 
     this.cache.viewStatus = ViewStatus.Concluded
@@ -378,7 +381,7 @@ export class GameService {
         away: await this.fetchBattingStats(lastPk, 'away'),
       }
 
-      const decisions = {
+      const decisions = data.liveData.decisions ? {
         winner: {
           id: data.liveData.decisions.winner.id,
           name: data.liveData.decisions.winner.fullName
@@ -395,9 +398,9 @@ export class GameService {
             },
           }
         )
-      }
+      } : null
 
-      const decisionPitchers = [
+      const decisionPitchers = decisions ? [
         {
           type: 'winner',
           side: awayWon ? 'away' : 'home',
@@ -414,9 +417,9 @@ export class GameService {
           label: 'L',
           stats: await this.fetchPitcherRecord(decisions.loser.id, (awayWon ? 'home' : 'away'), data),
         }
-      ]
+      ] : []
 
-      if (decisions.save) {
+      if (!isEmpty(decisionPitchers) && decisions.save) {
         decisionPitchers.push({
           type: 'save',
           side: awayWon ? 'away' : 'home',
