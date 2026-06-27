@@ -448,12 +448,6 @@ export class GameService {
       const response = await fetch(url)
       const data = await response.json()
 
-      const homePitcherId = data.gameData.probablePitchers.home.id
-      const homePitcherUrl = mlbEndpoints.playerInfo(homePitcherId)
-      const homePitcherResponse = await fetch(homePitcherUrl)
-      const homePitcherResponseData = await homePitcherResponse.json()
-      const homePitcherData = homePitcherResponseData.people[0]
-
       const getHomePitcherData = async () => {
         const homePitcherId = data?.gameData?.probablePitchers?.home?.id
         if (homePitcherId) {
