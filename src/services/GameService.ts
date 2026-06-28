@@ -1,16 +1,10 @@
 import { isEmpty } from 'lodash'
 import { fetchGamePks } from '../constants/fetchGames'
-import { mlbTeams } from '../constants/mlbData'
 import { mlbEndpoints } from '../constants/mlbEndpoints'
 import { weatherCodeMap } from '../constants/weatherCodeMap'
+import { NHLGameService } from './NHLGameService'
 
-const mockStandings: any = [
-    { abbreviation: 'CHC', wins: 99, losses: 26, gamesBack: 5 },
-    { abbreviation: 'MIL', wins: 99, losses: 21, gamesBack: '-' },
-    { abbreviation: 'CIN', wins: 99, losses: 30, gamesBack: 9.0 },
-    { abbreviation: 'STL', wins: 99, losses: 22, gamesBack: 1.5 },
-    { abbreviation: 'PIT', wins: 99, losses: 27, gamesBack: 6 }
-  ]
+const nhlService = new NHLGameService()
 
 enum ViewStatus {
   In_Progress = 'inProgress',
@@ -30,6 +24,7 @@ export interface GamesCache {
   battingLeaders: any
   pitchingLeaders: any
   postponedGame: any
+  nhl: any
 }
 
 export class GameService {
@@ -44,7 +39,8 @@ export class GameService {
     inningByInning: {},
     battingLeaders: {},
     pitchingLeaders: [],
-    postponedGame: {}
+    postponedGame: {},
+    nhl: {}
   }
 
   altDate(dateStr: any) {
@@ -158,7 +154,7 @@ export class GameService {
 
     return {
       divisionName,
-      standings: standings || mockStandings,
+      standings: standings || [],
     }
   }
 
@@ -186,6 +182,8 @@ export class GameService {
     const weatherDateTimeData = await this.fetchWeatherDateTimeData()
 
     this.cache.weatherDateTime = await weatherDateTimeData
+
+    this.cache.nhl = await nhlService.NHLRefresh()
 
     const gamePks = await fetchGamePks()
 
@@ -594,21 +592,7 @@ export class GameService {
       NLWest
     ]
 
-    // TODO: HELPER FUNCTION RELOCATE
-    const addAbbreviation = (values: any[]) => {
-      const abbMap = new Map(
-        mlbTeams.map((item: any) => [item.appId, item.abbreviation])
-      )
-
-      return values.map((team: any) => ({
-        ...team,
-        abbreviation: abbMap.get(team.teamId)
-      }))
-    }
-
-
     this.cache.lastUpdated = Date.now()
-
 
   }
 
