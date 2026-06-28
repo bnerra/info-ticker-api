@@ -65,6 +65,10 @@ export const fetchGamePks = async () => {
     postponedPk = null
   }
 
+  if (now > (postponedGameDate + 86400000)) {
+    postponedPk = null
+  }
+
   return {
     livePk,
     lastPk,
