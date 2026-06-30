@@ -1,3 +1,4 @@
+import { isEmpty } from 'lodash'
 import { fetchNHLGamePks } from '../constants/fetchNHLGames'
 import { nhlEndpoints } from '../constants/nhlEndpoints'
 
@@ -12,6 +13,10 @@ export interface NHLGamesCache {
   nhlCurrentGame: any
   nhlLastGame: any
   nhlNextGame: any
+  forwardLeaders: any
+  defenseLeaders: any
+  goalieSummary: any
+  periodByPeriod: any
 }
 
 export class NHLGameService {
@@ -20,6 +25,10 @@ export class NHLGameService {
     nhlCurrentGame: {},
     nhlLastGame: {},
     nhlNextGame: {},
+    forwardLeaders: {},
+    defenseLeaders: {},
+    goalieSummary: {},
+    periodByPeriod: {}
   }
 
   async getTeamRecord(teamAbb: number) {
@@ -34,6 +43,156 @@ export class NHLGameService {
       wins: teamData.wins,
       losses: teamData.losses,
       otLosses: teamData.otLosses
+    }
+  }
+
+  formatStatSummary(player: any): string {
+    const goals = `${player.goals}G`
+    const assists = `${player.assists}A`
+    const points = `${player.points}pts`
+    const sog = `${player.sog}sog`
+
+    return `${goals} ${assists} ${points} ${sog}`
+  }
+
+  async fetchForwardStats(forwards: any[]) {
+
+    const forwardLeaders = forwards.sort((a: any, b: any): any => {
+
+      return (
+        (b.points ?? 0) - (a.points ?? 0) ||
+        (b.goals ?? 0) - (a.goals ?? 0) ||
+        (b.assists ?? 0) - (a.assists ?? 0) ||
+        (b.sog ?? 0) - (a.sog ?? 0)
+      )
+    })
+
+    const filteredLeaders = forwardLeaders.map((player: any) => ({
+      name: player.name.default,
+      goals: player.goals ?? 0,
+      assists: player.assists ?? 0,
+      points: player.points ?? 0,
+      sog: player.sog ?? 0,
+      toi: player.toi ?? '00:00',
+    }))
+      .slice(0, 3)
+
+    const formattedLeaders = filteredLeaders.map((player: any) => ({
+      ...player,
+      summary: this.formatStatSummary(player)
+    }))
+    
+    return formattedLeaders
+  }
+
+  async fetchDefenderStats(defenders: any[]) {
+
+    const defenseLeaders = defenders.sort((a: any, b: any): any => {
+
+      return (
+        (b.points ?? 0) - (a.points ?? 0) ||
+        (b.goals ?? 0) - (a.goals ?? 0) ||
+        (b.assists ?? 0) - (a.assists ?? 0) ||
+        (b.sog ?? 0) - (a.sog ?? 0) ||
+        (b.blockedShots ?? 0) - (a.blockedShots ?? 0)
+      )
+    })
+
+    const filteredLeaders = defenseLeaders.map((player: any) => ({
+      name: player.name.default,
+      goals: player.goals ?? 0,
+      assists: player.assists ?? 0,
+      points: player.points ?? 0,
+      sog: player.sog ?? 0,
+      toi: player.toi ?? '00:00',
+    }))
+      .slice(0, 3)
+
+    const formattedLeaders = filteredLeaders.map((player: any) => ({
+      ...player,
+      summary: this.formatStatSummary(player)
+    }))
+    
+    return formattedLeaders
+  }
+
+  formatGoalieStatSummary(player: any): string {
+
+    return `${player.saves}/${player.shotsAgainst} ${player.goalsAgainst}GA ${player.savePctg}(SV%)`
+  }
+
+  async fetchGoalieStats(goalies: any[]) {
+
+    const forwardLeaders = goalies.sort((a: any, b: any): any => {
+
+      return (
+        (a.goalsAgainst ?? 0) - (b.goalsAgainst ?? 0) ||
+        (b.savePctg ?? 0) - (a.savePctg ?? 0) ||
+        (b.shotsAgainst ?? 0) - (a.shotsAgainst ?? 0) ||
+        (b.toi ?? 0) - (a.toi ?? 0)
+      )
+    })
+
+    const filteredLeaders = forwardLeaders.map((player: any) => ({
+      name: player.name.default,
+      goalsAgainst: player.goalsAgainst ?? 0,
+      shotsAgainst: player.shotsAgainst ?? 0,
+      saves: player.saves ?? 0,
+      savePctg: player.savePctg && player.savePctg.toFixed(3) || '0.0',
+      toi: player.toi ?? '00:00',
+    })).filter((player: any) => player.toi !== '00:00')
+
+    const formattedLeaders = filteredLeaders.map((player: any) => ({
+      ...player,
+      summary: this.formatGoalieStatSummary(player)
+    }))
+    
+    return formattedLeaders
+  }
+
+  
+  async getPeriodScoringSummary(summary: any, awayName: string, homeName: string){
+    const scoring = summary.scoring
+    const homeScore: number[] = []
+    const awayScore: number[] = []
+    const lastPeriod = scoring.at(-1)
+    let shootoutSummary = {}
+
+    for (const period of scoring ?? []) {
+      let homeGoals = 0
+      let awayGoals = 0
+
+      for (const goal of period.goals ?? []) {
+        if (goal.isHome) {
+          homeGoals++
+        } else {
+          awayGoals++
+        }
+      }
+
+      homeScore.push(homeGoals)
+      awayScore.push(awayGoals)
+    }
+
+    if (summary.shootout) {
+      shootoutSummary = {
+        home: summary.shootout.liveScore.home,
+        away: summary.shootout.liveScore.away,
+        rounds: summary.shootout.events.length / 2
+      }
+    }
+
+    return {
+      type: lastPeriod.periodDescriptor.periodType,
+      ...(!isEmpty(shootoutSummary) && {shootoutSummary}),
+      home: {
+        name: homeName,
+        score: homeScore
+      },
+      away: {
+        name: awayName,
+        score: awayScore
+      }
     }
   }
 
@@ -88,6 +247,10 @@ export class NHLGameService {
       const response = await fetch(url)
       const data = await response.json()
 
+      const gameUrl = nhlEndpoints.liveFeed(nhlLastId)
+      const gameResponse = await fetch(gameUrl)
+      const gameData = await gameResponse.json()
+
 
       this.nhlGameCache.nhlLastGame = {
         gameId: data.id,
@@ -121,6 +284,25 @@ export class NHLGameService {
             ...await this.getTeamRecord(data.homeTeam.abbrev),
           },
         }
+      }
+
+      this.nhlGameCache.forwardLeaders = {
+        away: await this.fetchForwardStats(data.playerByGameStats.awayTeam.forwards),
+        home: await this.fetchForwardStats(data.playerByGameStats.homeTeam.forwards)
+      }
+
+      this.nhlGameCache.defenseLeaders = {
+        away: await this.fetchDefenderStats(data.playerByGameStats.awayTeam.defense),
+        home: await this.fetchDefenderStats(data.playerByGameStats.homeTeam.defense)
+      }
+
+      this.nhlGameCache.goalieSummary = {
+        away: await this.fetchGoalieStats(data.playerByGameStats.awayTeam.goalies),
+        home: await this.fetchGoalieStats(data.playerByGameStats.homeTeam.goalies)
+      }
+
+      this.nhlGameCache.periodByPeriod = {
+        ... await this.getPeriodScoringSummary(gameData.summary, gameData.awayTeam.abbrev, gameData.homeTeam.abbrev)
       }
 
     }

@@ -35,6 +35,7 @@ export const fetchNHLGamePks = async () => {
       case 'OVER':
       case 'OFF':
         nhlLastId = game.id
+        // nhlLastId = 2025021042
         break
 
       // case 'Postponed':
