@@ -1,0 +1,13 @@
+flowchart TD
+
+A[External APIs<br/>MLB / NHL / Weather] --> B[Fastify API<br/>Render]
+
+B --> C[SSE Stream<br/>/api/live-games]
+
+C --> D[React UI<br/>Cloudflare Pages]
+
+D --> E[User Browser]
+
+B --> F[GameService<br/>Aggregation Layer]
+B --> G[NHLGameService]
+B --> H[SseManager<br/>Client Fanout]

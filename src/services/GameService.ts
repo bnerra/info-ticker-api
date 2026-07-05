@@ -81,12 +81,17 @@ export class GameService {
     const responses = await fetch(url)
     const response = await responses.json()
 
-    const weatherCode = response.current.weather_code
+    // {
+    //   reason: 'Daily API request limit exceeded. Please try again tomorrow.',
+    //   error: true
+    // }
+
+    const weatherCode = response.current?.weather_code || ''
 
     const date = new Date()
 
     const data = {
-      temperature: `${Math.round(response.current.temperature_2m)}\u00B0F`,
+      temperature: `${Math.round(response.current?.temperature_2m)}\u00B0F` || '',
       weatherCode,
       forecast: weatherCodeMap[weatherCode] ?? '',
       date: new Intl.DateTimeFormat('en-GB', {
