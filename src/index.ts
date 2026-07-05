@@ -28,6 +28,14 @@ app.get('/text', async (request, reply: FastifyReply) => {
   return reply.status(201).send('Welcome Earthling.')
 })
 
+app.get('/health', async () => {
+  return {
+    status: 'ok',
+    uptime: Math.floor(process.uptime()),
+    timeStamp: new Date().toISOString()
+  }
+})
+
 app.get('/batters', async (request, reply: FastifyReply) => {
   const url = `https://statsapi.mlb.com/api/v1/game/823045/boxscore`
   const responses = await fetch(url)
@@ -104,29 +112,6 @@ app.get('/api/games', async () => {
 })
 
 
-// POST (Create) item
-// app.post('/items', async (request: FastifyRequest<{ Body: { name: string } }>, reply) => {
-//   const { name } = request.body;
-//   const newItem = { id: Math.random().toString(36).substr(2, 9), name };
-//   items.push(newItem);
-//   return reply.status(201).send(newItem);
-// });
-
-// PUT (Update) item
-// app.put('/items/:id', async (request: FastifyRequest<{ Params: { id: string }, Body: { name: string } }>, reply) => {
-//   const { id } = request.params;
-//   const { name } = request.body;
-//   items = items.map(item => (item.id === id ? { id, name } : item));
-//   return { message: `Item ${id} updated` };
-// });
-
-// DELETE item
-// app.delete('/items/:id', async (request: FastifyRequest<{ Params: { id: string } }>, reply) => {
-//   const { id } = request.params;
-//   items = items.filter(item => item.id !== id);
-//   return { message: `Item ${id} removed` };
-// });
-
 // Start the server
 
 setInterval(async () => {
@@ -143,14 +128,19 @@ setInterval(async () => {
   }
 }, 10000)
 
+const PORT = Number(process.env.PORT) || 3000
+
 const start = async () => {
   try {
     await gameService.refresh()
     // await weatherService.refresh()
 
-    await app.listen({ port: 3000 })
+    await app.listen({
+      host: '0.0.0.0',
+      port: PORT
+    })
 
-    console.log(`Server listening on address: http://127.0.0.1:3000`)
+    console.log(`Server listening on port: ${PORT}`)
   } catch (err) {
     app.log.error(err)
     process.exit(1)
