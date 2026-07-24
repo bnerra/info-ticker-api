@@ -117,11 +117,9 @@ app.get('/api/games', async () => {
 setInterval(async () => {
   try {
     await gameService.refresh()
-    // await weatherService.refresh()
 
     sseManager.broadcast(
       gameService.getGames()
-      // weatherService.getWeatherTime()
     )
   } catch (err) {
     app.log.error(err)

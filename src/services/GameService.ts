@@ -27,6 +27,8 @@ export interface GamesCache {
   nhl: any
 }
 
+//TODO: Pass Services Health Data
+
 export class GameService {
   private cache: GamesCache = {
     viewStatus: ViewStatus.Concluded,
@@ -41,6 +43,18 @@ export class GameService {
     pitchingLeaders: [],
     postponedGame: {},
     nhl: {}
+    // services: {
+    //   weather: {
+    //     healthy: false,
+    //     lastSuccess: 1784850830
+    //   },
+    //   mlb: {
+    //     healthy: true
+    //   },
+    //   nhl: {
+    //     healthy: true
+    //   }
+    // }
   }
 
   altDate(dateStr: any) {
@@ -77,40 +91,73 @@ export class GameService {
   }
 
   async fetchWeatherDateTimeData() {
-    const url = 'https://api.open-meteo.com/v1/forecast?latitude=38.79&longitude=-90.63&current=temperature_2m,wind_speed_10m,cloud_cover,weather_code&hourly=precipitation_probability&temperature_unit=fahrenheit&wind_speed_unit=mph'
-    const responses = await fetch(url)
-    const response = await responses.json()
+    try {
+      const url = 'https://api.open-meteo.com/v1/forecast?latitude=38.79&longitude=-90.63&current=temperature_2m,wind_speed_10m,cloud_cover,weather_code&hourly=precipitation_probability&temperature_unit=fahrenheit&wind_speed_unit=mph'
+      const response = await fetch(url)
+      
+      if (!response.ok) {
+        throw new Error(`Weather API returned: ${response.status}`)
+      }
 
-    // {
-    //   reason: 'Daily API request limit exceeded. Please try again tomorrow.',
-    //   error: true
-    // }
+      const responseData = await response.json()
 
-    const weatherCode = response.current?.weather_code || ''
+      if (!responseData.current) {
+        throw new Error('Missing current weather')
+      }
 
-    const date = new Date()
+      const weatherCode = responseData.current?.weather_code || ''
 
-    const data = {
-      temperature: `${Math.round(response.current?.temperature_2m)}\u00B0F` || '',
-      weatherCode,
-      forecast: weatherCodeMap[weatherCode] ?? '',
-      date: new Intl.DateTimeFormat('en-GB', {
-        weekday: 'short',
-        month: 'short',
-        day: '2-digit'
-      })
-      .format(date),
-      time: new Date().toLocaleTimeString('en-US', {
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true
-      })
+      const date = new Date()
+
+      const temperature =
+        typeof responseData.current?.temperature_2m === 'number'
+          ? `${Math.round(responseData.current?.temperature_2m)}\u00B0F`
+          : '--'
+
+      const data = {
+        temperature,
+        weatherCode,
+        forecast: weatherCodeMap[weatherCode] ?? '',
+        date: new Intl.DateTimeFormat('en-GB', {
+          weekday: 'short',
+          month: 'short',
+          day: '2-digit'
+        })
+        .format(date),
+        time: date.toLocaleTimeString('en-US', {
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true
+        })
+      }
+
+      return data
+      
+    } catch (err) {
+      console.error(err)
+
+      return {
+        temperature: '--',
+        weatherCode: null,
+        forecast: 'Unavailable',
+        date: new Intl.DateTimeFormat('en-GB', {
+          weekday: 'short',
+          month: 'short',
+          day: '2-digit'
+        })
+        .format(new Date()),
+        time: new Date().toLocaleTimeString('en-US', {
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true
+        }),
+        status: 'Offline',
+      }
     }
-
-    return data
   }
 
   async fetchBattingStats(gamePk: number, team: string) {
+    //TODO: Implement Error Handling for BATTINGSTATS
     const url = `https://statsapi.mlb.com/api/v1/game/${gamePk}/boxscore`
     const responses = await fetch(url)
     const response = await responses.json()
@@ -143,6 +190,7 @@ export class GameService {
   }
 
   async divisionStandings(divisionId: number, leagueId: number, divisionName: string) {
+    //TODO: Implement Error Handling for DIVISIONSTANDINGS
     const url = mlbEndpoints.divisionStandings(divisionId, leagueId)
     const response = await fetch(url)
     const data = await response.json()
@@ -164,6 +212,7 @@ export class GameService {
   }
 
   async playerInfo(playerId: number) {
+    //TODO: Implement Error Handling for PLAYERINFO
     const url = mlbEndpoints.playerInfo(playerId)
     const response = await fetch(url)
     const responseData = await response.json()
@@ -184,9 +233,13 @@ export class GameService {
   }
 
   async refresh() {
-    const weatherDateTimeData = await this.fetchWeatherDateTimeData()
+    const weatherDateTimeData =
+        await this.fetchWeatherDateTimeData()
+          .catch(() => this.cache.weatherDateTime)
 
     this.cache.weatherDateTime = await weatherDateTimeData
+
+    //TODO: Implement Error Handling for nhlService
 
     this.cache.nhl = await nhlService.NHLRefresh()
 
@@ -210,6 +263,7 @@ export class GameService {
     this.cache.postponedGame = null
 
     if (livePk) {
+      //TODO: Implement Error Handling for LIVEPK
       const url = mlbEndpoints.liveFeed(livePk)
       const response = await fetch(url)
       const data = await response.json()
@@ -335,6 +389,7 @@ export class GameService {
     }
 
     if (lastPk && !livePk) {
+      //TODO: Implement Error Handling for LASTPK
       const url = mlbEndpoints.liveFeed(lastPk)
       const response = await fetch(url)
       const data = await response.json()
@@ -447,6 +502,7 @@ export class GameService {
     }
 
     if (nextPk) {
+      //TODO: Implement Error Handling for NEXTPK
       const url = mlbEndpoints.liveFeed(nextPk)
       const response = await fetch(url)
       const data = await response.json()
@@ -544,6 +600,7 @@ export class GameService {
     }
 
     if(postponedPk && !livePk) {
+      //TODO: Implement Error Handling for POSTPONED
       const url = `https://statsapi.mlb.com/api/v1/schedule?sportId=1&teamId=138&startDate=2026-03-25&endDate=2027-01-01`
 
       const response = await fetch(url)
