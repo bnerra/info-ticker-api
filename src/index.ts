@@ -23,13 +23,13 @@ app.setNotFoundHandler((req, reply) => {
 
 const gameService = new GameService()
 const sseManager = new SseManager()
-const powerService = new PowerService()
+const powerService = new PowerService(app.log)
 
 app.register(sseRoutes)
 app.register(systemRoutes)
 
-app.get('/api/system/tapo-test', async () => {
-  return await powerService.testConnection()
+app.post('/api/system/outlet/off', async () => {
+  return await powerService.turnOutletOff()
 })
 
 app.get('/text', async (request, reply: FastifyReply) => {
