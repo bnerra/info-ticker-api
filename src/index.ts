@@ -1,8 +1,10 @@
+import 'dotenv/config'
 import fastify from 'fastify'
 import { FastifyInstance, FastifyReply } from 'fastify'
 import fastifyStatic from '@fastify/static'
 import path from 'path'
 import { GameService } from './services/GameService'
+import { PowerService } from './services/PowerService'
 import { SseManager } from './services/SseManager'
 import sseRoutes from './routes/sse'
 import systemRoutes from './routes/system'
@@ -21,9 +23,14 @@ app.setNotFoundHandler((req, reply) => {
 
 const gameService = new GameService()
 const sseManager = new SseManager()
+const powerService = new PowerService()
 
 app.register(sseRoutes)
 app.register(systemRoutes)
+
+app.get('/api/system/tapo-test', async () => {
+  return await powerService.testConnection()
+})
 
 app.get('/text', async (request, reply: FastifyReply) => {
 
