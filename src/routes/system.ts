@@ -7,7 +7,7 @@ const systemRoutes: FastifyPluginAsync = async (app) => {
     app.log.info('Shutdown requested')
 
     setTimeout(() => {
-      exec('echo "shutdown would happen now"')
+      exec('sudo shutdown -h now')
     }, 5000)
 
     return {
