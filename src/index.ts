@@ -5,6 +5,7 @@ import path from 'path'
 import { GameService } from './services/GameService'
 import { SseManager } from './services/SseManager'
 import sseRoutes from './routes/sse'
+import systemRoutes from './routes/system'
 
 const app: FastifyInstance = fastify({
   logger: true,
@@ -22,6 +23,7 @@ const gameService = new GameService()
 const sseManager = new SseManager()
 
 app.register(sseRoutes)
+app.register(systemRoutes)
 
 app.get('/text', async (request, reply: FastifyReply) => {
 
