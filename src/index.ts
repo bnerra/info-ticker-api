@@ -18,7 +18,7 @@ app.setNotFoundHandler((req, reply) => {
   reply.sendFile('index.html')
 })
 
-const gameService = new GameService()
+const gameService = new GameService(app.log)
 const sseManager = new SseManager()
 
 app.register(sseRoutes)

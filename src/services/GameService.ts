@@ -3,6 +3,7 @@ import { fetchGamePks } from '../constants/fetchGames'
 import { mlbEndpoints } from '../constants/mlbEndpoints'
 import { weatherCodeMap } from '../constants/weatherCodeMap'
 import { NHLGameService } from './NHLGameService'
+import { FastifyBaseLogger } from 'fastify'
 
 const nhlService = new NHLGameService()
 
@@ -10,6 +11,52 @@ enum ViewStatus {
   In_Progress = 'inProgress',
   Upcoming = 'upcoming',
   Concluded = 'concluded'
+}
+
+interface BattingLeader {
+  name: string
+  hits: number | '--'
+  rbi: number | '--'
+  hr: number | '--'
+  summary: string
+}
+
+interface TeamDivisionalData {
+  teamId?: number
+  divisionRank: string
+  wins: number | '--'
+  losses: number | '--'
+  gamesBack: string
+}
+
+interface DivisionStandings {
+  divisionName: string
+  standings: TeamDivisionalData[]
+}
+
+interface MLBDivisionRecord {
+  division: {
+    id: number
+  }
+  teamRecords: {
+    team: {
+      id: number
+    }
+    divisionRank: string
+    wins: number
+    losses: number
+    gamesBack: string
+  }[]
+}
+
+interface MLBStandingsResponse {
+  records: MLBDivisionRecord[]
+}
+
+interface MLBPlayerResponse {
+  people: {
+    boxscoreName?: string
+  }[]
 }
 
 export interface GamesCache {
@@ -30,6 +77,11 @@ export interface GamesCache {
 //TODO: Pass Services Health Data
 
 export class GameService {
+
+  constructor(
+    private logger: FastifyBaseLogger
+  ) {}
+
   private cache: GamesCache = {
     viewStatus: ViewStatus.Concluded,
     weatherDateTime: {},
@@ -99,22 +151,22 @@ export class GameService {
         throw new Error(`Weather API returned: ${response.status}`)
       }
 
-      const responseData = await response.json()
+      const data = await response.json()
 
-      if (!responseData.current) {
+      if (!data.current) {
         throw new Error('Missing current weather')
       }
 
-      const weatherCode = responseData.current?.weather_code || ''
+      const weatherCode = data.current?.weather_code || ''
 
       const date = new Date()
 
       const temperature =
-        typeof responseData.current?.temperature_2m === 'number'
-          ? `${Math.round(responseData.current?.temperature_2m)}\u00B0F`
+        typeof data.current?.temperature_2m === 'number'
+          ? `${Math.round(data.current?.temperature_2m)}\u00B0F`
           : '--'
 
-      const data = {
+      const weatherData = {
         temperature,
         weatherCode,
         forecast: weatherCodeMap[weatherCode] ?? '',
@@ -131,10 +183,10 @@ export class GameService {
         })
       }
 
-      return data
+      return weatherData
       
     } catch (err) {
-      console.error(err)
+      this.logger.error({ err }, 'Current weather data fetch failed.')
 
       return {
         temperature: '--',
@@ -156,68 +208,159 @@ export class GameService {
     }
   }
 
-  async fetchBattingStats(gamePk: number, team: string) {
-    //TODO: Implement Error Handling for BATTINGSTATS
-    const url = `https://statsapi.mlb.com/api/v1/game/${gamePk}/boxscore`
-    const responses = await fetch(url)
-    const response = await responses.json()
+  async fetchBattingStats(gamePk: number, team: string): Promise<BattingLeader[]> {
+    try {
+      const url = `https://statsapi.mlb.com/api/v1/game/${gamePk}/boxscore`
+      const response = await fetch(url)
 
-    const players = Object.values(response.teams[team].players)
-    const batters = players.filter((player: any) => Object.keys(player.stats.batting).length > 0)
+      if (!response.ok) {
+        throw new Error(`fetchBattingStats call returned: ${response.status}`)
+      }
 
-    const battingLeaders = batters.sort((a: any, b: any): any => {
-      const aBat = a.stats.batting
-      const bBat = b.stats.batting
+      const data = await response.json()
 
-      return (
-        (bBat.homeRuns ?? 0) - (aBat.homeRuns ?? 0) ||
-        (bBat.rbi ?? 0) - (aBat.rbi ?? 0) ||
-        (bBat.hits ?? 0) - (aBat.hits ?? 0) ||
-        (bBat.runs ?? 0) - (aBat.runs ?? 0)
+      if (!data?.teams[team]?.players) {
+        throw new Error(`Missing ${team} player data for gamePk ${gamePk}`)
+      }
+
+      const players = Object.values(data.teams?.[team]?.players ?? {})
+      const batters = players.filter((player: any) => (player.stats?.batting && Object.keys(player.stats.batting).length > 0))
+
+      const battingLeaders = [...batters].sort((a: any, b: any): any => {
+        const aBat = a.stats.batting
+        const bBat = b.stats.batting
+
+        return (
+          (bBat.homeRuns ?? 0) - (aBat.homeRuns ?? 0) ||
+          (bBat.rbi ?? 0) - (aBat.rbi ?? 0) ||
+          (bBat.hits ?? 0) - (aBat.hits ?? 0) ||
+          (bBat.runs ?? 0) - (aBat.runs ?? 0)
+        )
+      })
+
+      const filteredLeaders = battingLeaders.map((player: any) => ({
+        name: player.person.boxscoreName,
+        hits: player.stats.batting?.hits ?? 0,
+        rbi: player.stats.batting?.rbi ?? 0,
+        hr: player.stats.batting?.homeRuns ?? 0,
+        summary: player.stats.batting?.summary ?? '',
+      }))
+        .slice(0, 3)
+      
+      return filteredLeaders
+
+    } catch (err) {
+      this.logger.error(
+        {
+          err,
+          gamePk,
+          team
+        },
+        `Failed fetching team batting stats.`
       )
-    })
 
-    const filteredLeaders = battingLeaders.map((player: any) => ({
-      name: player.person.boxscoreName,
-      hits: player.stats.batting?.hits ?? 0,
-      rbi: player.stats.batting?.rbi ?? 0,
-      hr: player.stats.batting?.homeruns ?? 0,
-      summary: player.stats.batting?.summary ?? '',
-    }))
-      .slice(0, 3)
-    
-    return filteredLeaders
-  }
-
-  async divisionStandings(divisionId: number, leagueId: number, divisionName: string) {
-    //TODO: Implement Error Handling for DIVISIONSTANDINGS
-    const url = mlbEndpoints.divisionStandings(divisionId, leagueId)
-    const response = await fetch(url)
-    const data = await response.json()
-
-    const division: any = data.records.find((record: any) => record.division.id === divisionId)
-
-    const standings = division.teamRecords.map((team: any) => ({
-      teamId: team.team.id,
-      divisionRank: team.divisionRank,
-      wins: team.wins,
-      losses: team.losses,
-      gamesBack: team.gamesBack,
-    }))
-
-    return {
-      divisionName,
-      standings: standings || [],
+      return Array.from({ length: 3}, () => ({
+        name: '--',
+        hits: '--',
+        rbi: '--',
+        hr: '--',
+        summary: '--',
+      }))
     }
   }
 
-  async playerInfo(playerId: number) {
-    //TODO: Implement Error Handling for PLAYERINFO
-    const url = mlbEndpoints.playerInfo(playerId)
-    const response = await fetch(url)
-    const responseData = await response.json()
+  async divisionStandings(divisionId: number, leagueId: number, divisionName: string): Promise<DivisionStandings> {
+    try {
+      const url = mlbEndpoints.divisionStandings(divisionId, leagueId)
+      const response = await fetch(url)
 
-    return responseData.people[0]
+      if (!response.ok) {
+        throw new Error(`divisionStandings call returned: ${response.status}`)
+      }
+
+      const data: MLBStandingsResponse = await response.json()
+
+      if (!data?.records) {
+        throw new Error(`Missing division records for league id ${leagueId}`)
+      }
+
+      const division = data.records.find((record: MLBDivisionRecord) => record.division.id === divisionId)
+
+      if (!division) {
+        throw new Error(`Missing data for division id ${divisionId}`)
+      }
+
+      if (!division.teamRecords || isEmpty(division.teamRecords)) {
+        throw new Error(`Missing team data for division id ${divisionId}`)
+      }
+
+      const standings: TeamDivisionalData[] = division.teamRecords.map(team => ({
+        teamId: team.team.id,
+        divisionRank: team.divisionRank,
+        wins: team.wins,
+        losses: team.losses,
+        gamesBack: team.gamesBack,
+      }))
+
+      return {
+        divisionName,
+        standings
+      }
+
+    } catch (err) {
+      this.logger.error(
+        {
+          err,
+          divisionName,
+          divisionId,
+          leagueId
+        },
+        'Failed fetching division standings.'
+      )
+
+      const standings: TeamDivisionalData[] = Array.from({ length: 5 }, () => ({
+        divisionRank: '--',
+        wins: '--',
+        losses: '--',
+        gamesBack: '--'
+      }))
+
+      return {
+        divisionName,
+        standings
+      }
+    }
+  }
+
+  async fetchPlayerBoxscoreName(playerId: number): Promise<string> {
+    try {
+      const url = mlbEndpoints.playerInfo(playerId)
+      const response = await fetch(url)
+
+      if (!response.ok) {
+        throw new Error(`fetchPlayerBoxscoreName call returned: ${response.status}`)
+      }
+
+      const data: MLBPlayerResponse = await response.json()
+
+      const boxscoreName = data?.people?.[0]?.boxscoreName
+
+      if (!boxscoreName) {
+        throw new Error(`Missing boxscoreName for player id ${playerId}`)
+      }
+
+      return boxscoreName
+    } catch (err) {
+      this.logger.error(
+        {
+          err,
+          playerId
+        },
+        'Failed fetching boxscoreName.'
+      )
+
+      return '--'
+    }
   }
 
   async fetchPitcherRecord(id: number, side: string, data: any) {
@@ -263,129 +406,315 @@ export class GameService {
     this.cache.postponedGame = null
 
     if (livePk) {
-      //TODO: Implement Error Handling for LIVEPK
-      const url = mlbEndpoints.liveFeed(livePk)
-      const response = await fetch(url)
-      const data = await response.json()
-      const isTopInning = data.liveData.linescore.isTopInning
+      try {
+        const url = mlbEndpoints.liveFeed(livePk)
+        const response = await fetch(url)
 
-      const getBatterData = async (batterId: number) => {
-        const team = isTopInning ? 'away' : 'home'
-        const playerString = `ID${batterId}`
-        const playerInfo = await this.playerInfo(batterId)
-
-        const players = data.liveData.boxscore.teams[team].players
-
-        return {
-          name: playerInfo.boxscoreName,
-          number: players[playerString]?.jerseyNumber || '#',
-          average: data?.liveData?.boxscore?.teams[team]?.players[`ID${batterId}`]?.seasonStats.batting.avg || '',
+        if (!response.ok) {
+          throw new Error(`Live game data call returned: ${response.status}`)
         }
-      }
 
-      const getPitcherData = async (pitcherId: number) => {
-        
-        const team = !isTopInning ? 'away' : 'home'
-        const playerInfo = await this.playerInfo(pitcherId)
-
-        return {
-          name: playerInfo.boxscoreName,
-          pitchCount: data?.liveData?.boxscore?.teams[team]?.players[`ID${pitcherId}`]?.stats.pitching.pitchesThrown || ' -',
+        interface MLBPlayerBoxscoreData {
+          person: {
+            fullName: string
+          }
+          jerseyNumber?: string
+          seasonStats?: {
+            batting?: {
+              avg?: string
+            }
+          }
+          stats?: {
+            pitching?: {
+              summary?: string
+              pitchesThrown?: string
+            }
+          }
         }
-      }
 
-      this.cache.viewStatus = ViewStatus.In_Progress
-      this.cache.currentGame = {
-        status: data.gameData.status,
-        gamePk: data.gamePk,
-        metaData: {
-          detailedState: data.gameData.status.detailedState,
-          date: data.gameData.datetime.officialDate.replaceAll('-', '/'),
-          time: `${data.gameData.datetime.time} ${data.gameData.datetime.ampm}`,
-          inning: data.liveData.linescore.currentInning,
-          inningState: data.liveData.linescore.inningState,
+        interface MLBTeamBoxscoreData {
+          teamStats: {
+            batting: {
+              runs: number
+              hits: number
+            }
+            fielding: {
+              errors: number
+            }
+          }
+          players: {
+            [playerId: string]: MLBPlayerBoxscoreData
+          }
+          pitchers: {
+            [index: number]: number
+          }[]
+        }
+
+        interface MLBLiveGameData {
+          gamePk: number
+          gameData: {
+            datetime: {
+              officialDate: string
+              time: string
+              ampm: string
+            }
+            status: {
+              detailedState: string
+            }
+            teams: {
+              home: {
+                name: string,
+                id: number
+                abbreviation: string
+              }
+              away: {
+                name: string,
+                id: number
+                abbreviation: string
+              }
+            }
+          }
+          liveData: {
+            linescore: {
+              currentInning: number
+              inningState: string
+              isTopInning: boolean
+              innings: {
+                num: number
+                ordinalNum: string
+                home: {
+                  runs: number
+                  hits: number
+                  errors: number
+                  leftOnBase: number
+                }
+                away: {
+                  runs: number
+                  hits: number
+                  errors: number
+                  leftOnBase: number
+                }
+              }[]
+              teams: {
+                home: {
+                  runs?: number
+                  hits?: number
+                  errors?: number
+                  leftOnBase: number
+                }
+                away: {
+                  runs?: number
+                  hits?: number
+                  errors?: number
+                  leftOnBase: number
+                }
+              }
+              offense: {
+                first?: any
+                second?: any
+                third?: any
+                batter?: {
+                  id?: number
+                  fullName?: string
+                }
+              }
+              defense: {
+                pitcher?: {
+                  id?: number
+                  fullName?: string
+                }
+              }
+              balls: number
+              strikes: number
+              outs: number
+            }
+            boxscore: {
+              teams: {
+                away: MLBTeamBoxscoreData,
+                home: MLBTeamBoxscoreData,
+              }
+            }
+          }
+        }
+      
+        const data: MLBLiveGameData = await response.json()
+
+        if (
+          !data.gameData ||
+          !data.liveData?.linescore ||
+          !data.liveData.boxscore
+        ) {
+          throw new Error(`Incomplete live game data for gamePk ${livePk}`)
+        }
+
+        const { gameData, liveData, gamePk } = data
+        const { linescore, boxscore } = liveData
+        const { datetime, status } = gameData
+        const { home, away } = gameData.teams
+
+        const buildPitchingLeader = (
+          side: 'home' | 'away',
+          team: MLBTeamBoxscoreData
+        ) => {
+          const pitcherId = team.pitchers.at(-1)
+
+          if (!pitcherId) {
+              return {
+                  side,
+                  id: undefined
+              }
+          }
+
+          const pitcher = team.players[`ID${pitcherId}`]
+
+          return {
+            side,
+            id: pitcherId,
+            name: pitcher?.person.fullName ?? '--',
+            jerseyNumber: pitcher?.jerseyNumber ?? '--',
+            stats: pitcher?.stats?.pitching?.summary ?? '--'
+          }
+        }
+
+        const isTopInning = linescore.isTopInning
+
+        const getBatterData = async (batterId?: number) => {
+
+          if (!batterId) {
+
+            return {
+              name: '--',
+              number: '##',
+              average: '--',
+            }
+          }
+          const team = isTopInning ? 'away' : 'home'
+          const name = await this.fetchPlayerBoxscoreName(batterId)
+
+          const player = boxscore.teams[team].players[`ID${batterId}`]
+
+          return {
+            name,
+            number: player?.jerseyNumber ?? '##',
+            average: player?.seasonStats?.batting?.avg ?? '--'
+          }
+        }
+
+        const getPitcherData = async (pitcherId?: number) => {
+
+          if (!pitcherId) {
+
+            return {
+              name: '--',
+              pitchCount: '--'
+            }
+          }
+          
+          const team = !isTopInning ? 'away' : 'home'
+          const name = await this.fetchPlayerBoxscoreName(pitcherId)
+
+          const player = boxscore.teams[team].players[`ID${pitcherId}`]
+
+          return {
+            name,
+            pitchCount: player?.stats?.pitching?.pitchesThrown || ' -',
+          }
+        }
+
+        const count = {
+          balls: linescore.balls,
+          strikes: linescore.strikes,
+          outs: linescore.outs
+        }
+
+        const runners = {
+          first: Boolean(linescore.offense.first),
+          second: Boolean(linescore.offense.second),
+          third: Boolean(linescore.offense.third)
+        }
+
+        const batter = await getBatterData(linescore.offense.batter?.id)
+
+        const pitcher = await getPitcherData(linescore.defense.pitcher?.id)
+
+        const metaData = {
+          detailedState: gameData.status.detailedState,
+          date: datetime.officialDate.replaceAll('-', '/'),
+          time: `${datetime.time} ${datetime.ampm}`,
+          inning: linescore.currentInning,
+          inningState: linescore.inningState,
           isTopInning,
-          count: {
-            balls: data.liveData.linescore.balls,
-            strikes: data.liveData.linescore.strikes,
-            outs: data.liveData.linescore.outs,
+          count,
+          runners,
+          batter,
+          pitcher
+        }
+
+        const homeTeam = {
+          name: home.name,
+          teamId: home.id,
+          score: linescore.teams.home.runs
+        }
+
+        const awayTeam = {
+          name: away.name,
+          teamId: away.id,
+          score: linescore.teams.away.runs
+        }
+        
+        this.cache.viewStatus = ViewStatus.In_Progress
+
+        this.cache.currentGame = {
+          status,
+          gamePk,
+          metaData,
+          homeTeam,
+          awayTeam,
+        }
+
+        const homeInnings: any = {
+          teamId: home.id,
+          name: home.abbreviation,
+          innings: linescore.innings.map((inning: any) => inning.home.runs),
+          runs: boxscore.teams.home.teamStats.batting.runs,
+          hits: boxscore.teams.home.teamStats.batting.hits,
+          errors: boxscore.teams.home.teamStats.fielding.errors,
+        }
+
+        const awayInnings: any = {
+          teamId: away.id,
+          name: away.abbreviation,
+          innings: linescore.innings.map((inning: any) => inning.away.runs),
+          runs: boxscore.teams.away.teamStats.batting.runs,
+          hits: boxscore.teams.away.teamStats.batting.hits,
+          errors: boxscore.teams.away.teamStats.fielding.errors,
+        }
+
+        this.cache.inningByInning = {
+          homeInnings: homeInnings,
+          awayInnings: awayInnings,
+        }
+
+        this.cache.battingLeaders = {
+          home: await this.fetchBattingStats(livePk, 'home'),
+          away: await this.fetchBattingStats(livePk, 'away'),
+        }
+
+        this.cache.pitchingLeaders = [
+          buildPitchingLeader('home', boxscore.teams.home),
+          buildPitchingLeader('away', boxscore.teams.away),
+        ]
+      } catch (err) {
+        this.logger.error(
+          {
+            err,
+            gamePk: livePk
           },
-          runners: {
-            first: !!data.liveData.linescore.offense.first,
-            second: !!data.liveData.linescore.offense.second,
-            third: !!data.liveData.linescore.offense.third,
-          },
-          batter: {...await getBatterData(data.liveData.linescore.offense.batter.id)},
-          pitcher: {...await getPitcherData(data.liveData.linescore.defense.pitcher.id)}
-        },
-        homeTeam: {
-          name: data.gameData.teams.home.name,
-          teamId: data.gameData.teams.home.id,
-          score: data.liveData.linescore.teams.home.runs,
-        },
-        awayTeam: {
-          name: data.gameData.teams.away.name,
-          score: data.liveData.linescore.teams.away.runs,
-          teamId: data.gameData.teams.away.id,
-        },
+          'Failed to fully update current game stats. Showing previously cached data.'
+        )
+
+        return this.cache.currentGame
       }
-
-      const homeInnings: any = {
-        teamId: data.gameData.teams.home.id,
-        name: data.gameData.teams.home.abbreviation,
-        innings: data.liveData.linescore.innings.map((inning: any) => inning.home.runs),
-        runs: data.liveData.boxscore.teams.home.teamStats.batting.runs,
-        hits: data.liveData.boxscore.teams.home.teamStats.batting.hits,
-        errors: data.liveData.boxscore.teams.home.teamStats.fielding.errors,
-      }
-
-      const awayInnings: any = {
-        teamId: data.gameData.teams.away.id,
-        name: data.gameData.teams.away.abbreviation,
-        innings: data.liveData.linescore.innings.map((inning: any) => inning.away.runs),
-        runs: data.liveData.boxscore.teams.away.teamStats.batting.runs,
-        hits: data.liveData.boxscore.teams.away.teamStats.batting.hits,
-        errors: data.liveData.boxscore.teams.away.teamStats.fielding.errors,
-      }
-
-      this.cache.inningByInning = {
-        homeInnings: homeInnings,
-        awayInnings: awayInnings,
-      }
-
-      this.cache.battingLeaders = {
-        home: await this.fetchBattingStats(livePk, 'home'),
-        away: await this.fetchBattingStats(livePk, 'away'),
-      }
-
-      const homePitcherId: any = data.liveData.boxscore.teams.home.pitchers.at(-1)
-      const awayPitcherId: any = data.liveData.boxscore.teams.away.pitchers.at(-1)
-
-      this.cache.pitchingLeaders = [
-        {
-          side: 'home', 
-          id: homePitcherId,
-          // 669467
-          ...(homePitcherId
-            && {
-              name: data.liveData.boxscore.teams.home.players[`ID${homePitcherId}`].person.fullName,
-              jerseyNumber: data.liveData.boxscore.teams.home.players[`ID${homePitcherId}`].jerseyNumber,
-              stats: data.liveData.boxscore.teams.home.players[`ID${homePitcherId}`].stats.pitching.summary,
-            }
-          )
-        },
-        {
-          side: 'away',
-          id: awayPitcherId,
-          ...(awayPitcherId
-            && {
-              name: data.liveData.boxscore.teams.away.players[`ID${awayPitcherId}`].person.fullName,
-              jerseyNumber: data.liveData.boxscore.teams.away.players[`ID${awayPitcherId}`].jerseyNumber,
-              stats: data.liveData.boxscore.teams.away.players[`ID${awayPitcherId}`].stats.pitching.summary,
-            }
-          )
-        },
-      ]
     }
 
     if (lastPk && !livePk) {
