@@ -713,121 +713,251 @@ export class GameService {
           'Failed to fully update current game stats. Showing previously cached data.'
         )
 
-        return this.cache.currentGame
+        // return this.cache.currentGame
       }
     }
 
     if (lastPk && !livePk) {
-      //TODO: Implement Error Handling for LASTPK
-      const url = mlbEndpoints.liveFeed(lastPk)
-      const response = await fetch(url)
-      const data = await response.json()
-
-      const awayWon = data.liveData.linescore.teams.away.runs > data.liveData.linescore.teams.home.runs
-
-      this.cache.lastGame = {
-        gamePk: data.gamePk,
-        metaData: {
-          date: this.altDate(data.gameData.datetime.officialDate)
-        },
-        homeTeam: {
-          name: data.gameData.teams.home.name,
-          score: data.liveData.linescore.teams.home.runs,
-          teamId: data.gameData.teams.home.id,
-          record: {
-            wins: data.gameData.teams.home.record.wins,
-            losses: data.gameData.teams.home.record.losses
-          },
-        },
-        awayTeam: {
-          name: data.gameData.teams.away.name,
-          score: data.liveData.linescore.teams.away.runs,
-          teamId: data.gameData.teams.away.id,
-          record: {
-            wins: data.gameData.teams.away.record.wins,
-            losses: data.gameData.teams.away.record.losses
-          },
-        },
-      }
-      
-      const homeInnings: any = {
-        teamId: data.gameData.teams.home.id,
-        name: data.gameData.teams.home.abbreviation,
-        innings: data.liveData.linescore.innings.map((inning: any) => inning.home.runs),
-        runs: data.liveData.boxscore.teams.home.teamStats.batting.runs,
-        hits: data.liveData.boxscore.teams.home.teamStats.batting.hits,
-        errors: data.liveData.boxscore.teams.home.teamStats.fielding.errors,
+      interface TeamScoringData {
+        teamId: number
+        name: string
+        innings: number[]
+        runs: number
+        hits: number
+        errors: number
       }
 
-      const awayInnings: any = {
-        teamId: data.gameData.teams.away.id,
-        name: data.gameData.teams.away.abbreviation,
-        innings: data.liveData.linescore.innings.map((inning: any) => inning.away.runs),
-        runs: data.liveData.boxscore.teams.away.teamStats.batting.runs,
-        hits: data.liveData.boxscore.teams.away.teamStats.batting.hits,
-        errors: data.liveData.boxscore.teams.away.teamStats.fielding.errors,
-      }
-
-      this.cache.inningByInning = {
-        homeInnings: homeInnings,
-        awayInnings: awayInnings,
-      }
-
-      this.cache.battingLeaders = {
-        home: await this.fetchBattingStats(lastPk, 'home'),
-        away: await this.fetchBattingStats(lastPk, 'away'),
-      }
-
-      const decisions = data.liveData.decisions ? {
-        winner: {
-          id: data.liveData.decisions.winner.id,
-          name: data.liveData.decisions.winner.fullName
-        },
-        loser: {
-          id: data.liveData.decisions.loser.id,
-          name: data.liveData.decisions.loser.fullName
-        },
-        ...(data.liveData.decisions.save
-          && {
-            save: {
-              id: data.liveData.decisions.save.id,
-              name: data.liveData.decisions.save.fullName
-            },
-          }
-        )
-      } : null
-
-      const decisionPitchers = decisions ? [
-        {
-          type: 'winner',
-          side: awayWon ? 'away' : 'home',
-          id: decisions.winner.id,
-          name: decisions.winner.name,
-          label: 'W',
-          stats: await this.fetchPitcherRecord(decisions.winner.id, (awayWon ? 'away' : 'home'), data),
-        },
-        {
-          type: 'loser',
-          side: awayWon ? 'home' : 'away',
-          id: decisions.loser.id,
-          name: decisions.loser.name,
-          label: 'L',
-          stats: await this.fetchPitcherRecord(decisions.loser.id, (awayWon ? 'home' : 'away'), data),
+      interface InningData {
+        num: number
+        ordinalNum: string
+        home: {
+          runs: number
         }
-      ] : []
-
-      if (!isEmpty(decisionPitchers) && decisions.save) {
-        decisionPitchers.push({
-          type: 'save',
-          side: awayWon ? 'away' : 'home',
-          id: decisions.save.id,
-          name: decisions.save.name,
-          label: 'S',
-          stats: `(${await this.fetchPitcherSaves(decisions.save.id, (awayWon ? 'away' : 'home'), data)})`,
-        })
+        away: {
+          runs: number
+        }
       }
 
-      this.cache.pitchingLeaders = [...decisionPitchers]
+      interface MLBPastGameData {
+        gamePk: number
+        gameData: {
+          datetime: {
+            officialDate: string
+          }
+          teams: {
+            away: {
+              id: number
+              name: string
+              abbreviation: string
+              record: {
+                wins: number
+                losses: number
+              }
+            }
+            home: {
+              id: number
+              name: string
+              abbreviation: string
+              record: {
+                wins: number
+                losses: number
+              }
+            }
+          }
+        }
+        liveData: {
+          linescore: {
+            teams: {
+              away: {
+                runs: number
+              }
+              home: {
+                runs: number
+              }
+            }
+            innings: InningData[]
+          }
+          boxscore: {
+            teams: {
+              away: {
+                teamStats: {
+                  batting: {
+                    hits: number
+                    runs: number
+                  }
+                  fielding: {
+                    errors: number
+                  }
+                }
+              }
+              home: {
+                teamStats: {
+                  batting: {
+                    hits: number
+                    runs: number
+                  }
+                  fielding: {
+                    errors: number
+                  }
+                }
+              }
+            }
+          }
+          decisions: {
+            winner: {
+              id: number
+              fullName: string
+            }
+            loser: {
+              id: number
+              fullName: string
+            }
+            save?: {
+              id: number
+              fullName: string
+            }
+          }
+        }
+      }
+
+      try {
+        const url = mlbEndpoints.liveFeed(lastPk)
+        const response = await fetch(url)
+
+        if (!response.ok) {
+          throw new Error(`Last game data call returned: ${response.status}`)
+        }
+
+        const data: MLBPastGameData = await response.json()
+
+        if (
+          !data.gameData ||
+          !data.liveData?.linescore ||
+          !data.liveData.boxscore
+        ) {
+          throw new Error(`Incomplete past game data for gamePk ${lastPk}`)
+        }
+
+        const { gameData, liveData, gamePk } = data
+        const { linescore, boxscore } = liveData
+        const { datetime } = gameData
+        const { home, away } = gameData.teams
+
+        const awayWon = linescore.teams.away.runs > linescore.teams.home.runs
+
+        this.cache.lastGame = {
+          gamePk,
+          metaData: {
+            date: this.altDate(datetime.officialDate)
+          },
+          homeTeam: {
+            name: home.name,
+            score: linescore.teams.home.runs,
+            teamId: home.id,
+            record: {
+              wins: home.record.wins,
+              losses: home.record.losses
+            },
+          },
+          awayTeam: {
+            name: away.name,
+            score: linescore.teams.away.runs,
+            teamId: away.id,
+            record: {
+              wins: away.record.wins,
+              losses: away.record.losses
+            },
+          },
+        }
+        
+        const homeInnings: TeamScoringData = {
+          teamId: home.id,
+          name: home.abbreviation,
+          innings: linescore.innings.map((inning: InningData) => inning.home.runs),
+          runs: boxscore.teams.home.teamStats.batting.runs,
+          hits: boxscore.teams.home.teamStats.batting.hits,
+          errors: boxscore.teams.home.teamStats.fielding.errors,
+        }
+
+        const awayInnings: TeamScoringData = {
+          teamId: away.id,
+          name: away.abbreviation,
+          innings: linescore.innings.map((inning: any) => inning.away.runs),
+          runs: boxscore.teams.away.teamStats.batting.runs,
+          hits: boxscore.teams.away.teamStats.batting.hits,
+          errors: boxscore.teams.away.teamStats.fielding.errors,
+        }
+
+        this.cache.inningByInning = {
+          homeInnings: homeInnings,
+          awayInnings: awayInnings,
+        }
+
+        this.cache.battingLeaders = {
+          home: await this.fetchBattingStats(lastPk, 'home'),
+          away: await this.fetchBattingStats(lastPk, 'away'),
+        }
+
+        const decisions = liveData.decisions ? {
+          winner: {
+            id: liveData.decisions.winner.id,
+            name: liveData.decisions.winner.fullName
+          },
+          loser: {
+            id: liveData.decisions.loser.id,
+            name: liveData.decisions.loser.fullName
+          },
+          ...(liveData.decisions.save
+            && {
+              save: {
+                id: liveData.decisions.save.id,
+                name: liveData.decisions.save.fullName
+              },
+            }
+          )
+        } : null
+
+        const decisionPitchers = decisions ? [
+          {
+            type: 'winner',
+            side: awayWon ? 'away' : 'home',
+            id: decisions.winner.id,
+            name: decisions.winner.name,
+            label: 'W',
+            stats: await this.fetchPitcherRecord(decisions.winner.id, (awayWon ? 'away' : 'home'), data),
+          },
+          {
+            type: 'loser',
+            side: awayWon ? 'home' : 'away',
+            id: decisions.loser.id,
+            name: decisions.loser.name,
+            label: 'L',
+            stats: await this.fetchPitcherRecord(decisions.loser.id, (awayWon ? 'home' : 'away'), data),
+          }
+        ] : []
+
+        if (!isEmpty(decisionPitchers) && decisions && decisions.save) {
+          decisionPitchers.push({
+            type: 'save',
+            side: awayWon ? 'away' : 'home',
+            id: decisions.save.id,
+            name: decisions.save.name,
+            label: 'S',
+            stats: `(${await this.fetchPitcherSaves(decisions.save.id, (awayWon ? 'away' : 'home'), data)})`,
+          })
+        }
+
+        this.cache.pitchingLeaders = [...decisionPitchers]
+
+      } catch (err) {
+        this.logger.error(
+          {
+            err,
+            gamePk: lastPk
+          },
+          'Failed to fully update last game stats. Showing previously cached data.'
+        )
+      }
     }
 
     if (nextPk) {
