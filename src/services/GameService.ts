@@ -74,6 +74,137 @@ export interface GamesCache {
   nhl: any
 }
 
+interface TeamScoringData {
+  teamId: number
+  name: string
+  innings: number[]
+  runs: number
+  hits: number
+  errors: number
+}
+
+interface InningData {
+  num: number
+  ordinalNum: string
+  home: {
+    runs: number
+  }
+  away: {
+    runs: number
+  }
+}
+
+interface MLBPlayerBoxscoreData {
+  person: {
+    fullName: string
+  }
+  jerseyNumber?: string
+  seasonStats?: {
+    batting?: {
+      avg?: string
+    }
+    pitching?: {
+      wins?: number
+      losses?: number
+      saves?: number
+    }
+  }
+  stats?: {
+    pitching?: {
+      summary?: string
+      pitchesThrown?: string
+    }
+  }
+}
+
+interface MLBPastGameData {
+  gamePk: number
+  gameData: {
+    datetime: {
+      officialDate: string
+    }
+    teams: {
+      away: {
+        id: number
+        name: string
+        abbreviation: string
+        record: {
+          wins: number
+          losses: number
+        }
+      }
+      home: {
+        id: number
+        name: string
+        abbreviation: string
+        record: {
+          wins: number
+          losses: number
+        }
+      }
+    }
+  }
+  liveData: {
+    linescore: {
+      teams: {
+        away: {
+          runs: number
+        }
+        home: {
+          runs: number
+        }
+      }
+      innings: InningData[]
+    }
+    boxscore: {
+      teams: {
+        away: {
+          teamStats: {
+            batting: {
+              hits: number
+              runs: number
+            }
+            fielding: {
+              errors: number
+            }
+          }
+          players: {
+            [playerId: string]: MLBPlayerBoxscoreData
+          }
+        }
+        home: {
+          teamStats: {
+            batting: {
+              hits: number
+              runs: number
+            }
+            fielding: {
+              errors: number
+            }
+          }
+          players: {
+            [playerId: string]: MLBPlayerBoxscoreData
+          }
+        }
+      }
+    }
+    decisions: {
+      winner: {
+        id: number
+        fullName: string
+      }
+      loser: {
+        id: number
+        fullName: string
+      }
+      save?: {
+        id: number
+        fullName: string
+      }
+    }
+  }
+}
+
 //TODO: Pass Services Health Data
 
 export class GameService {
@@ -363,16 +494,30 @@ export class GameService {
     }
   }
 
-  async fetchPitcherRecord(id: number, side: string, data: any) {
+  async fetchPitcherRecord(id: number, side: 'home' | 'away', data: MLBPastGameData): Promise<string> {
     const playerData = data.liveData.boxscore.teams[side].players[`ID${id}`]
+    const pitching = playerData?.seasonStats?.pitching
 
-    return `(${playerData.seasonStats.pitching.wins}-${playerData.seasonStats.pitching.losses})`
+    if (!pitching) {
+      this.logger.error({ id, side }, 'Missing pitching stats for pitcher record.')
+
+      return '( - )'
+    }
+
+    return `(${pitching.wins}-${pitching.losses})`
   }
 
-  async fetchPitcherSaves(id: number, side: string, data: any) {
+  async fetchPitcherSaves(id: number, side: 'home' | 'away', data: MLBPastGameData): Promise<string> {
     const playerData = data.liveData.boxscore.teams[side].players[`ID${id}`]
+    const saves = playerData?.seasonStats?.pitching?.saves
 
-    return playerData.seasonStats.pitching.saves
+    if (saves === undefined) {
+      this.logger.error({ id, side }, 'Missing pitcher saves.')
+
+      return '(--)'
+    }
+
+    return `(${saves})`
   }
 
   async refresh() {
@@ -412,24 +557,6 @@ export class GameService {
 
         if (!response.ok) {
           throw new Error(`Live game data call returned: ${response.status}`)
-        }
-
-        interface MLBPlayerBoxscoreData {
-          person: {
-            fullName: string
-          }
-          jerseyNumber?: string
-          seasonStats?: {
-            batting?: {
-              avg?: string
-            }
-          }
-          stats?: {
-            pitching?: {
-              summary?: string
-              pitchesThrown?: string
-            }
-          }
         }
 
         interface MLBTeamBoxscoreData {
@@ -718,108 +845,6 @@ export class GameService {
     }
 
     if (lastPk && !livePk) {
-      interface TeamScoringData {
-        teamId: number
-        name: string
-        innings: number[]
-        runs: number
-        hits: number
-        errors: number
-      }
-
-      interface InningData {
-        num: number
-        ordinalNum: string
-        home: {
-          runs: number
-        }
-        away: {
-          runs: number
-        }
-      }
-
-      interface MLBPastGameData {
-        gamePk: number
-        gameData: {
-          datetime: {
-            officialDate: string
-          }
-          teams: {
-            away: {
-              id: number
-              name: string
-              abbreviation: string
-              record: {
-                wins: number
-                losses: number
-              }
-            }
-            home: {
-              id: number
-              name: string
-              abbreviation: string
-              record: {
-                wins: number
-                losses: number
-              }
-            }
-          }
-        }
-        liveData: {
-          linescore: {
-            teams: {
-              away: {
-                runs: number
-              }
-              home: {
-                runs: number
-              }
-            }
-            innings: InningData[]
-          }
-          boxscore: {
-            teams: {
-              away: {
-                teamStats: {
-                  batting: {
-                    hits: number
-                    runs: number
-                  }
-                  fielding: {
-                    errors: number
-                  }
-                }
-              }
-              home: {
-                teamStats: {
-                  batting: {
-                    hits: number
-                    runs: number
-                  }
-                  fielding: {
-                    errors: number
-                  }
-                }
-              }
-            }
-          }
-          decisions: {
-            winner: {
-              id: number
-              fullName: string
-            }
-            loser: {
-              id: number
-              fullName: string
-            }
-            save?: {
-              id: number
-              fullName: string
-            }
-          }
-        }
-      }
-
       try {
         const url = mlbEndpoints.liveFeed(lastPk)
         const response = await fetch(url)
@@ -845,29 +870,28 @@ export class GameService {
 
         const awayWon = linescore.teams.away.runs > linescore.teams.home.runs
 
-        this.cache.lastGame = {
-          gamePk,
-          metaData: {
-            date: this.altDate(datetime.officialDate)
-          },
-          homeTeam: {
-            name: home.name,
-            score: linescore.teams.home.runs,
-            teamId: home.id,
-            record: {
-              wins: home.record.wins,
-              losses: home.record.losses
-            },
-          },
-          awayTeam: {
-            name: away.name,
-            score: linescore.teams.away.runs,
-            teamId: away.id,
-            record: {
-              wins: away.record.wins,
-              losses: away.record.losses
-            },
-          },
+        const metaData = {
+          date: this.altDate(datetime.officialDate)
+        }
+
+        const homeTeam = {
+          name: home.name,
+          score: linescore.teams.home.runs,
+          teamId: home.id,
+          record: {
+            wins: home.record.wins,
+            losses: home.record.losses
+          }
+        }
+
+        const awayTeam = {
+          name: away.name,
+          score: linescore.teams.away.runs,
+          teamId: away.id,
+          record: {
+            wins: away.record.wins,
+            losses: away.record.losses
+          }
         }
         
         const homeInnings: TeamScoringData = {
@@ -882,21 +906,15 @@ export class GameService {
         const awayInnings: TeamScoringData = {
           teamId: away.id,
           name: away.abbreviation,
-          innings: linescore.innings.map((inning: any) => inning.away.runs),
+          innings: linescore.innings.map((inning: InningData) => inning.away.runs),
           runs: boxscore.teams.away.teamStats.batting.runs,
           hits: boxscore.teams.away.teamStats.batting.hits,
           errors: boxscore.teams.away.teamStats.fielding.errors,
         }
 
-        this.cache.inningByInning = {
-          homeInnings: homeInnings,
-          awayInnings: awayInnings,
-        }
+        const homeBattingLeaders = await this.fetchBattingStats(lastPk, 'home')
 
-        this.cache.battingLeaders = {
-          home: await this.fetchBattingStats(lastPk, 'home'),
-          away: await this.fetchBattingStats(lastPk, 'away'),
-        }
+        const awayBattingLeaders = await this.fetchBattingStats(lastPk, 'away')
 
         const decisions = liveData.decisions ? {
           winner: {
@@ -943,8 +961,25 @@ export class GameService {
             id: decisions.save.id,
             name: decisions.save.name,
             label: 'S',
-            stats: `(${await this.fetchPitcherSaves(decisions.save.id, (awayWon ? 'away' : 'home'), data)})`,
+            stats: await this.fetchPitcherSaves(decisions.save.id, (awayWon ? 'away' : 'home'), data),
           })
+        }
+
+        this.cache.lastGame = {
+          gamePk,
+          metaData,
+          homeTeam,
+          awayTeam,
+        }
+
+        this.cache.inningByInning = {
+          homeInnings,
+          awayInnings,
+        }
+
+        this.cache.battingLeaders = {
+          home: homeBattingLeaders,
+          away: awayBattingLeaders,
         }
 
         this.cache.pitchingLeaders = [...decisionPitchers]
