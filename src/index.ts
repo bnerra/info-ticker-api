@@ -4,10 +4,8 @@ import { FastifyInstance, FastifyReply } from 'fastify'
 import fastifyStatic from '@fastify/static'
 import path from 'path'
 import { GameService } from './services/GameService'
-import { PowerService } from './services/PowerService'
 import { SseManager } from './services/SseManager'
 import sseRoutes from './routes/sse'
-import systemRoutes from './routes/system'
 
 const app: FastifyInstance = fastify({
   logger: true,
@@ -23,14 +21,8 @@ app.setNotFoundHandler((req, reply) => {
 
 const gameService = new GameService()
 const sseManager = new SseManager()
-const powerService = new PowerService(app.log)
 
 app.register(sseRoutes)
-app.register(systemRoutes)
-
-app.post('/api/system/outlet/off', async () => {
-  return await powerService.turnOutletOff()
-})
 
 app.get('/text', async (request, reply: FastifyReply) => {
 
