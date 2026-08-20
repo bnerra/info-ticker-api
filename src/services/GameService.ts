@@ -559,11 +559,14 @@ export class GameService {
         }
       }
 
+      console.log('DATE: ', data.gameData.datetime)
+
       this.cache.nextGame = {
         gamePk: data.gamePk,
         metaData: {
           date: this.altDate(data.gameData.datetime.officialDate),
-          time: `${data.gameData.datetime.time} ${data.gameData.datetime.ampm}`
+          time: `${data.gameData.datetime.time} ${data.gameData.datetime.ampm}`,
+          dateISO: data.gameData.datetime.dateTime
         },
         homeTeam: {
           name: data.gameData.teams.home.name,
