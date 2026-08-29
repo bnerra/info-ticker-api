@@ -996,100 +996,93 @@ export class GameService {
     }
 
     if (nextPk) {
-      //TODO: Implement Error Handling for NEXTPK
-      const url = mlbEndpoints.liveFeed(nextPk)
-      const response = await fetch(url)
-      const data = await response.json()
+      try {
+        const url = mlbEndpoints.liveFeed(nextPk)
+        const response = await fetch(url)
 
-      const getHomePitcherData = async () => {
-        const homePitcherId = data?.gameData?.probablePitchers?.home?.id
-        if (homePitcherId) {
-          const homePitcherUrl = mlbEndpoints.playerInfo(homePitcherId)
-          const homePitcherResponse = await fetch(homePitcherUrl)
-          const homePitcherResponseData = await homePitcherResponse.json()
-          const homePitcherData = homePitcherResponseData.people[0]
+        if (!response.ok) {
+          throw new Error(`Next game data call returned: ${response.status}`)
+        }
+
+        const data = await response.json()
+
+        if (
+          !data.gameData ||
+          !data.liveData?.linescore ||
+          !data.liveData.boxscore
+        ) {
+          throw new Error(`Incomplete next game data for gamePk ${nextPk}`)
+        }
+
+        const { gamePk, gameData, liveData } = data
+        const { boxscore } = liveData
+        const { datetime, probablePitchers } = gameData
+        const { away, home } = gameData.teams
+
+        const getPitcherData = async (side: 'away' | 'home', pitcherId?: number) => {
+          if (pitcherId) {
+            const pitcherUrl = mlbEndpoints.playerInfo(pitcherId)
+            const pitcherResponse = await fetch(pitcherUrl)
+
+            if (!pitcherResponse.ok) {
+              throw new Error(`Pitcher info call returned: ${pitcherResponse.status}`)
+            }
+
+            const pitcherResponseData = await pitcherResponse.json()
+            const pitcherData = pitcherResponseData.people[0]
+            const pitcherSeasonStats = boxscore.teams[side].players[`ID${pitcherId}`].seasonStats
+
+            return {
+              name: pitcherData.boxscoreName,
+              hand: pitcherData.pitchHand.code,
+              era: pitcherSeasonStats.pitching.era,
+              wins: pitcherSeasonStats.pitching.wins,
+              losses: pitcherSeasonStats.pitching.losses,
+            }
+          }
 
           return {
-            name: homePitcherData.boxscoreName,
-            hand: homePitcherData.pitchHand.code,
-            era: data.liveData.boxscore.teams.home.players[`ID${homePitcherId}`].seasonStats.pitching.era,
-            wins: data.liveData.boxscore.teams.home.players[`ID${homePitcherId}`].seasonStats.pitching.wins,
-            losses: data.liveData.boxscore.teams.home.players[`ID${homePitcherId}`].seasonStats.pitching.losses,
+            name: 'n/a',
+            hand: '?',
+            era: '-',
+            wins: '',
+            losses: ''
           }
         }
 
-        return {
-          name: 'n/a',
-          hand: '?',
-          era: '-',
-          wins: '',
-          losses: ''
-        }
-      }
-
-      const getAwayPitcherData = async () => {
-        const awayPitcherId = data?.gameData?.probablePitchers?.away?.id
-        if (awayPitcherId) {
-          const awayPitcherUrl = mlbEndpoints.playerInfo(awayPitcherId)
-          const awayPitcherResponse = await fetch(awayPitcherUrl)
-          const awayPitcherResponseData = await awayPitcherResponse.json()
-          const awayPitcherData = awayPitcherResponseData.people[0]
-
-          return {
-            name: awayPitcherData.boxscoreName,
-            hand: awayPitcherData.pitchHand.code,
-            era: data.liveData.boxscore.teams.away.players[`ID${awayPitcherId}`].seasonStats.pitching.era,
-            wins: data.liveData.boxscore.teams.away.players[`ID${awayPitcherId}`].seasonStats.pitching.wins,
-            losses: data.liveData.boxscore.teams.away.players[`ID${awayPitcherId}`].seasonStats.pitching.losses,
-          }
-        }
-
-        return {
-          name: 'n/a',
-          hand: '?',
-          era: '0.00',
-          wins: '',
-          losses: ''
-        }
-      }
-
-      this.cache.nextGame = {
-        gamePk: data.gamePk,
-        metaData: {
-          date: this.altDate(data.gameData.datetime.officialDate),
-          time: `${data.gameData.datetime.time} ${data.gameData.datetime.ampm}`
-        },
-        homeTeam: {
-          name: data.gameData.teams.home.name,
-          teamId: data.gameData.teams.home.id,
-          record: {
-            wins: data.gameData.teams.home.record.wins,
-            losses: data.gameData.teams.home.record.losses
+        this.cache.nextGame = {
+          gamePk,
+          metaData: {
+            date: this.altDate(datetime.officialDate),
+            time: `${datetime.time} ${datetime.ampm}`
           },
-          probablePitcher: {
-            name: (await getHomePitcherData()).name,
-            hand: (await getHomePitcherData()).hand,
-            era: (await getHomePitcherData()).era,
-            wins: (await getHomePitcherData()).wins,
-            losses: (await getHomePitcherData()).losses
-          }
-        },
-        awayTeam: {
-          name: data.gameData.teams.away.name,
-          score: data.liveData.linescore.teams.away.runs,
-          teamId: data.gameData.teams.away.id,
-          record: {
-            wins: data.gameData.teams.away.record.wins,
-            losses: data.gameData.teams.away.record.losses
+          homeTeam: {
+            name: home.name,
+            teamId: home.id,
+            record: {
+              wins: home.record.wins,
+              losses: home.record.losses
+            },
+            probablePitcher: await getPitcherData('home', probablePitchers.home?.id)
           },
-          probablePitcher: {
-            name: (await getAwayPitcherData()).name,
-            hand: (await getAwayPitcherData()).hand,
-            era: (await getAwayPitcherData()).era,
-            wins: (await getAwayPitcherData()).wins,
-            losses: (await getAwayPitcherData()).losses
-          }
-        },
+          awayTeam: {
+            name: away.name,
+            teamId: away.id,
+            record: {
+              wins: away.record.wins,
+              losses: away.record.losses
+            },
+            probablePitcher: await getPitcherData('away', probablePitchers.away?.id)
+          },
+        }
+      } catch (err) {
+        this.logger.error(
+          {
+            err,
+            gamePk: nextPk
+          },
+          'Failed to fully update next game stats. Showing previously cached data.'
+        )
       }
     }
 
