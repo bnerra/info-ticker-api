@@ -1054,7 +1054,8 @@ export class GameService {
           gamePk,
           metaData: {
             date: this.altDate(datetime.officialDate),
-            time: `${datetime.time} ${datetime.ampm}`
+            time: `${datetime.time} ${datetime.ampm}`,
+            dateISO: data.gameData.datetime.dateTime
           },
           homeTeam: {
             name: home.name,

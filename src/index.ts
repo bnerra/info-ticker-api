@@ -1,3 +1,4 @@
+import 'dotenv/config'
 import fastify from 'fastify'
 import { FastifyInstance, FastifyReply } from 'fastify'
 import fastifyStatic from '@fastify/static'
