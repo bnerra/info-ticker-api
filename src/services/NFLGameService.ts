@@ -10,14 +10,18 @@ export interface NFLTeam {
   score?: string
 }
 
-export interface NFLStatLeader {
-  category: string
-  displayName: string
+export interface NFLStatLeaderEntry {
   playerName: string
   teamId: string
   teamAbbreviation: string
   displayValue: string
   value: number
+}
+
+export interface NFLStatLeaderGroup {
+  category: string
+  displayName: string
+  entries: NFLStatLeaderEntry[]
 }
 
 export interface NFLGame {
@@ -32,25 +36,26 @@ export interface NFLGame {
   isRedZone?: boolean
   homeTeam: NFLTeam
   awayTeam: NFLTeam
-  leaders: NFLStatLeader[]
+  leaders: NFLStatLeaderGroup[]
 }
 
 export interface NFLGamesCache {
   games: NFLGame[]
-  dailyLeaders: NFLStatLeader[]
+  weeklyLeaders: NFLStatLeaderGroup[]
   lastUpdated: number | null
 }
 
-const NFL_TIMEZONE = 'America/Chicago'
-
-const getLocalDateString = (isoString: string) =>
-  new Intl.DateTimeFormat('en-CA', { timeZone: NFL_TIMEZONE }).format(new Date(isoString))
+const WEEKLY_LEADER_CATEGORIES = [
+  { name: 'passingYards', displayName: 'Passing Leaders' },
+  { name: 'rushingYards', displayName: 'Rushing Leaders' },
+  { name: 'receivingYards', displayName: 'Receiving Leaders' }
+]
 
 export class NFLGameService {
 
   private nflGameCache: NFLGamesCache = {
     games: [],
-    dailyLeaders: [],
+    weeklyLeaders: [],
     lastUpdated: null
   }
 
@@ -66,12 +71,12 @@ export class NFLGameService {
     }
   }
 
-  private normalizeLeaders(rawLeaders: any, homeTeam: NFLTeam, awayTeam: NFLTeam): NFLStatLeader[] {
+  private normalizeLeaders(rawLeaders: any, homeTeam: NFLTeam, awayTeam: NFLTeam): NFLStatLeaderGroup[] {
     if (!rawLeaders) {
       return []
     }
 
-    const relevantCategories = ['passingYards', 'rushingYards', 'receivingYards']
+    const relevantCategories = WEEKLY_LEADER_CATEGORIES.map((c) => c.name)
 
     return rawLeaders
       .filter((category: any) => relevantCategories.includes(category.name))
@@ -83,11 +88,13 @@ export class NFLGameService {
         return {
           category: category.name,
           displayName: category.displayName,
-          playerName: leader?.athlete?.displayName ?? 'Unknown',
-          teamId,
-          teamAbbreviation,
-          displayValue: leader?.displayValue ?? '',
-          value: leader?.value ?? 0
+          entries: leader ? [{
+            playerName: leader?.athlete?.displayName ?? 'Unknown',
+            teamId,
+            teamAbbreviation,
+            displayValue: leader?.displayValue ?? '',
+            value: leader?.value ?? 0
+          }] : []
         }
       })
   }
@@ -126,25 +133,15 @@ export class NFLGameService {
     }
   }
 
-  private computeDailyLeaders(games: NFLGame[]): NFLStatLeader[] {
-    const today = getLocalDateString(new Date().toISOString())
-    const todaysGames = games.filter((game) => getLocalDateString(game.kickoff) === today)
+  private computeWeeklyLeaders(games: NFLGame[]): NFLStatLeaderGroup[] {
+    return WEEKLY_LEADER_CATEGORIES.map(({ name, displayName }) => {
+      const entries = games
+        .flatMap((game) => game.leaders.find((group) => group.category === name)?.entries ?? [])
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 5)
 
-    const categories = ['passingYards', 'rushingYards', 'receivingYards']
-
-    return categories
-      .map((category) => {
-        const candidates = todaysGames
-          .map((game) => game.leaders.find((leader) => leader.category === category))
-          .filter((leader): leader is NFLStatLeader => Boolean(leader))
-
-        if (candidates.length === 0) {
-          return null
-        }
-
-        return candidates.reduce((best, current) => (current.value > best.value ? current : best))
-      })
-      .filter((leader): leader is NFLStatLeader => Boolean(leader))
+      return { category: name, displayName, entries }
+    })
   }
 
   async NFLRefresh() {
@@ -156,7 +153,7 @@ export class NFLGameService {
       const normalizedGames = (data.events ?? []).map((event: any) => this.normalizeGame(event))
 
       this.nflGameCache.games = normalizedGames
-      this.nflGameCache.dailyLeaders = this.computeDailyLeaders(normalizedGames)
+      this.nflGameCache.weeklyLeaders = this.computeWeeklyLeaders(normalizedGames)
       this.nflGameCache.lastUpdated = Date.now()
     } catch (err) {
       console.log('NFL refresh failed', err)
