@@ -4,8 +4,10 @@ import { mlbEndpoints } from '../constants/mlbEndpoints'
 import { weatherCodeMap } from '../constants/weatherCodeMap'
 import { NHLGameService } from './NHLGameService'
 import { FastifyBaseLogger } from 'fastify'
+import { NFLGameService } from './NFLGameService'
 
 const nhlService = new NHLGameService()
+const nflService = new NFLGameService()
 
 enum ViewStatus {
   In_Progress = 'inProgress',
@@ -72,6 +74,7 @@ export interface GamesCache {
   pitchingLeaders: any
   postponedGame: any
   nhl: any
+  nfl: any
 }
 
 interface TeamScoringData {
@@ -225,7 +228,8 @@ export class GameService {
     battingLeaders: {},
     pitchingLeaders: [],
     postponedGame: {},
-    nhl: {}
+    nhl: {},
+    nfl: {}
     // services: {
     //   weather: {
     //     healthy: false,
@@ -530,6 +534,7 @@ export class GameService {
     //TODO: Implement Error Handling for nhlService
 
     this.cache.nhl = await nhlService.NHLRefresh()
+    this.cache.nfl = await nflService.NFLRefresh()
 
     const gamePks = await fetchGamePks()
 

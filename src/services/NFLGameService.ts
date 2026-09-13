@@ -5,7 +5,19 @@ export interface NFLTeam {
   abbreviation: string
   displayName: string
   logo: string
+  color?: string
+  alternateColor?: string
   score?: string
+}
+
+export interface NFLStatLeader {
+  category: string
+  displayName: string
+  playerName: string
+  teamId: string
+  teamAbbreviation: string
+  displayValue: string
+  value: number
 }
 
 export interface NFLGame {
@@ -20,17 +32,25 @@ export interface NFLGame {
   isRedZone?: boolean
   homeTeam: NFLTeam
   awayTeam: NFLTeam
+  leaders: NFLStatLeader[]
 }
 
 export interface NFLGamesCache {
   games: NFLGame[]
+  dailyLeaders: NFLStatLeader[]
   lastUpdated: number | null
 }
+
+const NFL_TIMEZONE = 'America/Chicago'
+
+const getLocalDateString = (isoString: string) =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: NFL_TIMEZONE }).format(new Date(isoString))
 
 export class NFLGameService {
 
   private nflGameCache: NFLGamesCache = {
     games: [],
+    dailyLeaders: [],
     lastUpdated: null
   }
 
@@ -40,8 +60,36 @@ export class NFLGameService {
       abbreviation: competitor.team.abbreviation,
       displayName: competitor.team.displayName,
       logo: competitor.team.logo,
+      color: competitor.team.color,
+      alternateColor: competitor.team.alternateColor,
       score: competitor.score
     }
+  }
+
+  private normalizeLeaders(rawLeaders: any, homeTeam: NFLTeam, awayTeam: NFLTeam): NFLStatLeader[] {
+    if (!rawLeaders) {
+      return []
+    }
+
+    const relevantCategories = ['passingYards', 'rushingYards', 'receivingYards']
+
+    return rawLeaders
+      .filter((category: any) => relevantCategories.includes(category.name))
+      .map((category: any) => {
+        const leader = category.leaders?.[0]
+        const teamId = leader?.team?.id
+        const teamAbbreviation = teamId === homeTeam.id ? homeTeam.abbreviation : awayTeam.abbreviation
+
+        return {
+          category: category.name,
+          displayName: category.displayName,
+          playerName: leader?.athlete?.displayName ?? 'Unknown',
+          teamId,
+          teamAbbreviation,
+          displayValue: leader?.displayValue ?? '',
+          value: leader?.value ?? 0
+        }
+      })
   }
 
   private normalizeGame(event: any): NFLGame {
@@ -51,6 +99,9 @@ export class NFLGameService {
 
     const homeCompetitor = competition.competitors.find((c: any) => c.homeAway === 'home')
     const awayCompetitor = competition.competitors.find((c: any) => c.homeAway === 'away')
+
+    const homeTeam = this.normalizeTeam(homeCompetitor)
+    const awayTeam = this.normalizeTeam(awayCompetitor)
 
     let status: NFLGame['status'] = 'live'
     if (statusType.name === 'STATUS_SCHEDULED') {
@@ -69,9 +120,31 @@ export class NFLGameService {
       possessionTeamId: situation?.possession,
       situationText: situation?.downDistanceText,
       isRedZone: situation?.isRedZone,
-      homeTeam: this.normalizeTeam(homeCompetitor),
-      awayTeam: this.normalizeTeam(awayCompetitor)
+      homeTeam,
+      awayTeam,
+      leaders: this.normalizeLeaders(competition.leaders, homeTeam, awayTeam)
     }
+  }
+
+  private computeDailyLeaders(games: NFLGame[]): NFLStatLeader[] {
+    const today = getLocalDateString(new Date().toISOString())
+    const todaysGames = games.filter((game) => getLocalDateString(game.kickoff) === today)
+
+    const categories = ['passingYards', 'rushingYards', 'receivingYards']
+
+    return categories
+      .map((category) => {
+        const candidates = todaysGames
+          .map((game) => game.leaders.find((leader) => leader.category === category))
+          .filter((leader): leader is NFLStatLeader => Boolean(leader))
+
+        if (candidates.length === 0) {
+          return null
+        }
+
+        return candidates.reduce((best, current) => (current.value > best.value ? current : best))
+      })
+      .filter((leader): leader is NFLStatLeader => Boolean(leader))
   }
 
   async NFLRefresh() {
@@ -80,7 +153,10 @@ export class NFLGameService {
       const response = await fetch(url)
       const data = await response.json()
 
-      this.nflGameCache.games = (data.events ?? []).map((event: any) => this.normalizeGame(event))
+      const normalizedGames = (data.events ?? []).map((event: any) => this.normalizeGame(event))
+
+      this.nflGameCache.games = normalizedGames
+      this.nflGameCache.dailyLeaders = this.computeDailyLeaders(normalizedGames)
       this.nflGameCache.lastUpdated = Date.now()
     } catch (err) {
       console.log('NFL refresh failed', err)
