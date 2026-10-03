@@ -39,9 +39,20 @@ export interface NFLGame {
   leaders: NFLStatLeaderGroup[]
 }
 
+export interface NFLFeedEntry {
+  id: string
+  gameId: string
+  teamAbbreviation: string
+  text: string
+  scoreValue: number
+  statYardage: number
+  timestamp: number
+}
+
 export interface NFLGamesCache {
   games: NFLGame[]
   weeklyLeaders: NFLStatLeaderGroup[]
+  feed: NFLFeedEntry[]
   lastUpdated: number | null
 }
 
@@ -51,13 +62,19 @@ const WEEKLY_LEADER_CATEGORIES = [
   { name: 'receivingYards', displayName: 'Receiving Leaders' }
 ]
 
+const BIG_PLAY_YARDAGE = 20
+const MAX_FEED_ENTRIES = 20
+
 export class NFLGameService {
 
   private nflGameCache: NFLGamesCache = {
     games: [],
     weeklyLeaders: [],
+    feed: [],
     lastUpdated: null
   }
+
+  private lastSeenPlayIds: Record<string, string> = {}
 
   private normalizeTeam(competitor: any): NFLTeam {
     return {
@@ -144,13 +161,137 @@ export class NFLGameService {
     })
   }
 
+  private isNotablePlay(play: any): boolean {
+    if (play.scoreValue > 0) {
+      return true
+    }
+
+    if ((play.statYardage ?? 0) >= BIG_PLAY_YARDAGE) {
+      return true
+    }
+
+    const playType: string = play.type?.text ?? ''
+
+    return /interception|fumble recovery \(opponent\)/i.test(playType)
+  }
+
+  private checkForFeedEntry(gameId: string, competition: any, homeTeam: NFLTeam, awayTeam: NFLTeam) {
+    const lastPlay = competition.situation?.lastPlay
+
+    if (!lastPlay || this.lastSeenPlayIds[gameId] === lastPlay.id) {
+      return
+    }
+
+    this.lastSeenPlayIds[gameId] = lastPlay.id
+
+    if (!this.isNotablePlay(lastPlay)) {
+      return
+    }
+
+    const teamId = lastPlay.team?.id
+    const teamAbbreviation = teamId === homeTeam.id ? homeTeam.abbreviation : awayTeam.abbreviation
+
+    this.nflGameCache.feed.unshift({
+      id: lastPlay.id,
+      gameId,
+      teamAbbreviation,
+      text: lastPlay.text,
+      scoreValue: lastPlay.scoreValue ?? 0,
+      statYardage: lastPlay.statYardage ?? 0,
+      timestamp: Date.now()
+    })
+
+    this.nflGameCache.feed = this.nflGameCache.feed.slice(0, MAX_FEED_ENTRIES)
+  }
+
+  private isToday(iso: string): boolean {
+    return new Date(iso).toDateString() === new Date().toDateString()
+  }
+
+  private findHeroGame(games: NFLGame[]): NFLGame | null {
+    const todaysGames = games.filter((game) => this.isToday(game.kickoff))
+    const liveGames = todaysGames.filter((game) => game.status === 'live')
+
+    if (liveGames.length === 1) {
+      return liveGames[0] ?? null
+    }
+    if (liveGames.length === 0 && todaysGames.length === 1) {
+      return todaysGames[0] ?? null
+    }
+    return null
+  }
+
+  private computeGameTopLeaders(playersData: any[]): NFLStatLeaderGroup[] {
+    const categories = [
+      { statName: 'passing', key: 'passingYards', category: 'passingYards', displayName: 'Passing Leaders' },
+      { statName: 'rushing', key: 'rushingYards', category: 'rushingYards', displayName: 'Rushing Leaders' },
+      { statName: 'receiving', key: 'receivingYards', category: 'receivingYards', displayName: 'Receiving Leaders' }
+    ]
+
+    return categories.map(({ statName, key, category, displayName }) => {
+      const entries: NFLStatLeaderEntry[] = []
+
+      for (const teamBlock of playersData) {
+        const statGroup = teamBlock.statistics.find((s: any) => s.name === statName)
+        if (!statGroup) continue
+
+        const statIndex = statGroup.keys.indexOf(key)
+        if (statIndex === -1) continue
+
+        for (const athleteEntry of statGroup.athletes) {
+          const rawValue = athleteEntry.stats[statIndex]
+          const value = Number(rawValue)
+          if (!Number.isFinite(value)) continue
+
+          entries.push({
+            playerName: athleteEntry.athlete.displayName,
+            teamId: teamBlock.team.id,
+            teamAbbreviation: teamBlock.team.abbreviation,
+            displayValue: `${rawValue} ${statGroup.labels[statIndex]}`,
+            value
+          })
+        }
+      }
+
+      const topEntries = entries.sort((a, b) => b.value - a.value).slice(0, 5)
+      return { category, displayName, entries: topEntries }
+    })
+  }
+
+  private async fetchGameLeaders(eventId: string): Promise<NFLStatLeaderGroup[] | null> {
+    try {
+      const url = nflEndpoints.summary(eventId)
+      const response = await fetch(url)
+      const data = await response.json()
+      return this.computeGameTopLeaders(data.boxscore.players)
+    } catch (err) {
+      console.log('NFL game leaders fetch failed', err)
+      return null
+    }
+  }
+
   async NFLRefresh() {
     try {
       const url = nflEndpoints.scoreboard()
       const response = await fetch(url)
       const data = await response.json()
+      const events = data.events ?? []
 
-      const normalizedGames = (data.events ?? []).map((event: any) => this.normalizeGame(event))
+      const normalizedGames: NFLGame[] = events.map((event: any) => this.normalizeGame(event))
+
+      normalizedGames.forEach((game, index) => {
+        const competition = events[index].competitions[0]
+        this.checkForFeedEntry(game.id, competition, game.homeTeam, game.awayTeam)
+      })
+
+      const heroGame = this.findHeroGame(normalizedGames)
+
+      if (heroGame) {
+        const detailedLeaders = await this.fetchGameLeaders(heroGame.id)
+        if (detailedLeaders) {
+          heroGame.leaders = detailedLeaders
+        }
+      }
 
       this.nflGameCache.games = normalizedGames
       this.nflGameCache.weeklyLeaders = this.computeWeeklyLeaders(normalizedGames)
